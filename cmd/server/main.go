@@ -41,7 +41,7 @@ func newLLMClient(cfg config.Config) (llm.Client, error) {
 	switch cfg.LLM.Mode {
 	case "mock":
 		return llm.NewMockClient(), nil
-	case "model":
+	case "bailian":
 		return llm.NewBailianClient(cfg.LLM.APIKey, cfg.LLM.Model, cfg.LLM.BaseURL, cfg.LLM.Timeout())
 	case "deepseek":
 		return llm.NewDeepSeekClient(cfg.LLM.APIKey, cfg.LLM.Model, cfg.LLM.BaseURL, cfg.LLM.Timeout())

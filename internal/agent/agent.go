@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"agent-demo/internal/prompt"
 	"context"
 	"fmt"
 
@@ -8,12 +9,14 @@ import (
 )
 
 type Agent struct {
-	llmClient llm.Client
+	llmClient     llm.Client
+	promptFactory *prompt.Factory
 }
 
 func NewAgent(llmClient llm.Client) *Agent {
 	return &Agent{
-		llmClient: llmClient,
+		llmClient:     llmClient,
+		promptFactory: prompt.NewFactory(),
 	}
 }
 
@@ -22,9 +25,8 @@ func (a *Agent) Chat(ctx context.Context, question string) (string, string, erro
 		return "", "", fmt.Errorf("question is empty")
 	}
 
-	prompt := buildPrompt(question)
-
-	answer, err := a.llmClient.Generate(ctx, prompt)
+	promptTxt := buildPrompt(question)
+	answer, err := a.llmClient.Generate(ctx, promptTxt)
 	if err != nil {
 		return "", "", fmt.Errorf("generate answer: %w", err)
 	}
@@ -44,4 +46,22 @@ func buildPrompt(question string) string {
 
 用户问题：
 %s`, question)
+}
+
+func (a *Agent) ChatWithType(ctx context.Context, question string, promptType prompt.Type) (string, string, error) {
+	if question == "" {
+		return "", "", fmt.Errorf("question is empty")
+	}
+
+	promptText, err := a.promptFactory.Build(promptType, question)
+	if err != nil {
+		return "", "", fmt.Errorf("build prompt: %w", err)
+	}
+
+	answer, err := a.llmClient.Generate(ctx, promptText)
+	if err != nil {
+		return "", "", fmt.Errorf("generate answer: %w", err)
+	}
+
+	return answer, string(promptType), nil
 }

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"agent-demo/internal/prompt"
 	"encoding/json"
 	"net/http"
 
@@ -34,7 +35,12 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	answer, answerType, err := h.agent.Chat(r.Context(), req.Question)
+	promptType := prompt.TypeChat
+	if req.Type != "" {
+		promptType = prompt.Type(req.Type)
+	}
+
+	answer, answerType, err := h.agent.ChatWithType(r.Context(), req.Question, promptType)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": err.Error(),

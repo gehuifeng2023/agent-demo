@@ -1,15 +1,30 @@
 package main
 
 import (
+	"agent-demo/internal/llm"
 	"log"
 	"net/http"
+	"os"
 
 	"agent-demo/internal/agent"
 	"agent-demo/internal/handler"
 )
 
 func main() {
-	agentCore := agent.NewAgent()
+	var llmClient llm.Client
+	if os.Getenv("LLM_MODE") == "mock" {
+		llmClient = llm.NewMockClient()
+		log.Println("LLM mode: mock")
+	} else {
+		client, err := llm.NewOpenAIClient()
+		if err != nil {
+			log.Fatalf("create llm client: %v", err)
+		}
+		llmClient = client
+		log.Println("LLM mode: openai")
+	}
+
+	agentCore := agent.NewAgent(llmClient)
 	chatHandler := handler.NewChatHandler(agentCore)
 
 	mux := http.NewServeMux()

@@ -1,57 +1,39 @@
 package agent
 
 import (
-	"agent-demo/internal/prompt"
 	"context"
 	"fmt"
 
+	"agent-demo/internal/intent"
 	"agent-demo/internal/llm"
+	"agent-demo/internal/prompt"
 )
 
 type Agent struct {
 	llmClient     llm.Client
 	promptFactory *prompt.Factory
+	classifier    *intent.Classifier
 }
 
 func NewAgent(llmClient llm.Client) *Agent {
 	return &Agent{
 		llmClient:     llmClient,
 		promptFactory: prompt.NewFactory(),
+		classifier:    intent.NewClassifier(),
 	}
 }
 
-func (a *Agent) Chat(ctx context.Context, question string) (string, string, error) {
+func (a *Agent) Chat(ctx context.Context, question string, requestType string) (string, string, error) {
 	if question == "" {
 		return "", "", fmt.Errorf("question is empty")
 	}
 
-	promptTxt := buildPrompt(question)
-	answer, err := a.llmClient.Generate(ctx, promptTxt)
+	intentType, err := a.resolveIntent(ctx, question, requestType)
 	if err != nil {
-		return "", "", fmt.Errorf("generate answer: %w", err)
+		return "", "", fmt.Errorf("resolve intent: %w", err)
 	}
 
-	return answer, "llm_chat", nil
-}
-
-func buildPrompt(question string) string {
-	return fmt.Sprintf(`
-你是一个专业的技术问答智能体。
-请用中文回答用户问题。
-回答要求：
-1. 先给结论
-2. 再解释原因
-3. 最后给出建议
-4. 如果信息不足，请说明不确定点
-
-用户问题：
-%s`, question)
-}
-
-func (a *Agent) ChatWithType(ctx context.Context, question string, promptType prompt.Type) (string, string, error) {
-	if question == "" {
-		return "", "", fmt.Errorf("question is empty")
-	}
+	promptType := toPromptType(intentType)
 
 	promptText, err := a.promptFactory.Build(promptType, question)
 	if err != nil {
@@ -63,5 +45,26 @@ func (a *Agent) ChatWithType(ctx context.Context, question string, promptType pr
 		return "", "", fmt.Errorf("generate answer: %w", err)
 	}
 
-	return answer, string(promptType), nil
+	return answer, string(intentType), nil
+}
+
+func (a *Agent) resolveIntent(ctx context.Context, question string, requestType string) (prompt.Type, error) {
+	if requestType != "" {
+		return prompt.Type(requestType), nil
+	}
+
+	return a.classifier.Classify(ctx, question)
+}
+
+func toPromptType(intentType prompt.Type) prompt.Type {
+	switch intentType {
+	case prompt.TypeLogAnalysis:
+		return prompt.TypeLogAnalysis
+	case prompt.TypeSummarize:
+		return prompt.TypeSummarize
+	case prompt.TypeTaskBreakdown:
+		return prompt.TypeTaskBreakdown
+	default:
+		return prompt.TypeChat
+	}
 }

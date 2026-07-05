@@ -24,7 +24,11 @@ func main() {
 		log.Println("LLM mode: openai")
 	}
 
-	agentCore := agent.NewAgent(llmClient)
+	agentCore, err := agent.NewAgent(llmClient)
+	if err != nil {
+		panic(err)
+	}
+
 	chatHandler := handler.NewChatHandler(agentCore)
 
 	mux := http.NewServeMux()

@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"agent-demo/internal/document"
+	"agent-demo/internal/retriever"
 	"context"
 	"fmt"
 
@@ -13,14 +15,23 @@ type Agent struct {
 	llmClient     llm.Client
 	promptFactory *prompt.Factory
 	classifier    *intent.Classifier
+	retriever     *retriever.KeywordRetriever
 }
 
-func NewAgent(llmClient llm.Client) *Agent {
+func NewAgent(llmClient llm.Client) (*Agent, error) {
+	docs, err := document.LoadFromDir("docs")
+	if err != nil {
+		return nil, fmt.Errorf("load docs: %w", err)
+	}
+
+	chunks := document.SplitByParagraph(docs)
+
 	return &Agent{
 		llmClient:     llmClient,
 		promptFactory: prompt.NewFactory(),
 		classifier:    intent.NewClassifier(),
-	}
+		retriever:     retriever.NewKeywordRetriever(chunks),
+	}, nil
 }
 
 func (a *Agent) Chat(ctx context.Context, question string, requestType string) (string, string, error) {
@@ -33,9 +44,7 @@ func (a *Agent) Chat(ctx context.Context, question string, requestType string) (
 		return "", "", fmt.Errorf("resolve intent: %w", err)
 	}
 
-	promptType := toPromptType(intentType)
-
-	promptText, err := a.promptFactory.Build(promptType, question)
+	promptText, err := a.buildPrompt(intentType, question)
 	if err != nil {
 		return "", "", fmt.Errorf("build prompt: %w", err)
 	}
@@ -46,6 +55,18 @@ func (a *Agent) Chat(ctx context.Context, question string, requestType string) (
 	}
 
 	return answer, string(intentType), nil
+}
+
+func (a *Agent) buildPrompt(intentType prompt.Type, question string) (string, error) {
+	if intentType == prompt.TypeChat {
+		chunks := a.retriever.Retrieve(question, 3)
+		if len(chunks) > 0 {
+			return prompt.BuildRAGPrompt(question, chunks), nil
+		}
+	}
+
+	promptType := toPromptType(intentType)
+	return a.promptFactory.Build(promptType, question)
 }
 
 func (a *Agent) resolveIntent(ctx context.Context, question string, requestType string) (prompt.Type, error) {

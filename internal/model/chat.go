@@ -1,11 +1,13 @@
 package model
 
 type ChatRequest struct {
-	Question string `json:"question"`
-	Type     string `json:"type"`
+	Question  string `json:"question"`
+	Type      string `json:"type"`
+	SessionID string `json:"sessionID"`
 }
 
 type ChatResponse struct {
-	Answer string `json:"answer"`
-	Type   string `json:"type"`
+	SessionID string `json:"sessionID"`
+	Answer    string `json:"answer"`
+	Type      string `json:"type"`
 }

@@ -25,10 +25,10 @@ func SplitByParagraph(docs []Document) []Chunk {
 			}
 
 			chunks = append(chunks, Chunk{
-				ID:       fmt.Sprintf("%s-%d", doc.Source, index),
+				ID:       fmt.Sprintf("%s-%d", doc.Source, index+1),
 				Source:   doc.Source,
 				Content:  text,
-				Position: index,
+				Position: index + 1,
 			})
 		}
 	}

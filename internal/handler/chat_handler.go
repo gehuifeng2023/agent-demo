@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 
 	"agent-demo/internal/agent"
@@ -43,7 +42,6 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Fatalf("xxx： %#v", sources)
 	resp := model.ChatResponse{
 		SessionID: sessionID,
 		Answer:    answer,

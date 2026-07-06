@@ -1,11 +1,14 @@
 package retriever
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 
 	"agent-demo/internal/document"
 )
+
+var nonAlnumRe = regexp.MustCompile(`[^\p{L}\p{N}]+`)
 
 type KeywordRetriever struct {
 	chunks []document.Chunk
@@ -18,7 +21,7 @@ func NewKeywordRetriever(chunks []document.Chunk) *KeywordRetriever {
 }
 
 func (r *KeywordRetriever) Retrieve(query string, topK int) []document.Chunk {
-	query = strings.ToLower(strings.TrimSpace(query))
+	query = normalizeText(query)
 	if query == "" || topK <= 0 {
 		return nil
 	}
@@ -33,7 +36,7 @@ func (r *KeywordRetriever) Retrieve(query string, topK int) []document.Chunk {
 	terms := strings.Fields(query)
 
 	for _, chunk := range r.chunks {
-		content := strings.ToLower(chunk.Content)
+		content := normalizeText(chunk.Content)
 
 		score := 0
 		for _, term := range terms {
@@ -64,4 +67,10 @@ func (r *KeywordRetriever) Retrieve(query string, topK int) []document.Chunk {
 	}
 
 	return result
+}
+
+func normalizeText(text string) string {
+	text = strings.ToLower(strings.TrimSpace(text))
+	text = nonAlnumRe.ReplaceAllString(text, " ")
+	return strings.Join(strings.Fields(text), " ")
 }

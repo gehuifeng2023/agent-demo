@@ -66,7 +66,9 @@ func (a *Agent) Chat(ctx context.Context, sessionID string, question string, req
 		return "", "", sessionID, nil, fmt.Errorf("resolve intent: %w", err)
 	}
 
-	promptText, chunks, err := a.buildPrompt(intentType, question, history)
+	chunks := a.retriever.Retrieve(question, 3)
+
+	promptText, err := a.buildPrompt(intentType, question, history, chunks)
 	if err != nil {
 		return "", "", sessionID, buildSources(chunks), fmt.Errorf("build prompt: %w", err)
 	}
@@ -97,23 +99,22 @@ func (a *Agent) Chat(ctx context.Context, sessionID string, question string, req
 	return answer, string(intentType), sessionID, buildSources(chunks), nil
 }
 
-func (a *Agent) buildPrompt(intentType prompt.Type, question string, history []session.Message) (string, []document.Chunk, error) {
+func (a *Agent) buildPrompt(intentType prompt.Type, question string, history []session.Message, chunks []document.Chunk) (string, error) {
 	if intentType == prompt.TypeChat {
-		chunks := a.retriever.Retrieve(question, 3)
 		if len(chunks) > 0 {
-			return prompt.BuildRAGPrompt(question, chunks, history), chunks, nil
+			return prompt.BuildRAGPrompt(question, chunks, history), nil
 		}
 		if looksLikeDocumentQuestion(question) {
-			return prompt.BuildRAGPrompt(question, nil, history), nil, nil
+			return prompt.BuildRAGPrompt(question, nil, history), nil
 		}
 
 		input := prompt.WithHistory(question, history)
 		promptText, err := a.promptFactory.Build(prompt.TypeChat, input)
-		return promptText, nil, err
+		return promptText, err
 	}
 
 	promptText, err := a.promptFactory.Build(intentType, question)
-	return promptText, nil, err
+	return promptText, err
 }
 
 func buildSources(chunks []document.Chunk) []model.Source {

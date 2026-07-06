@@ -1,12 +1,15 @@
 package document
 
 import (
+	"fmt"
 	"strings"
 )
 
 type Chunk struct {
-	Source  string
-	Content string
+	ID       string
+	Source   string
+	Content  string
+	Position int
 }
 
 func SplitByParagraph(docs []Document) []Chunk {
@@ -15,15 +18,17 @@ func SplitByParagraph(docs []Document) []Chunk {
 	for _, doc := range docs {
 		parts := strings.Split(doc.Content, "\n\n")
 
-		for _, part := range parts {
+		for index, part := range parts {
 			text := strings.TrimSpace(part)
 			if text == "" {
 				continue
 			}
 
 			chunks = append(chunks, Chunk{
-				Source:  doc.Source,
-				Content: text,
+				ID:       fmt.Sprintf("%s-%d", doc.Source, index),
+				Source:   doc.Source,
+				Content:  text,
+				Position: index,
 			})
 		}
 	}

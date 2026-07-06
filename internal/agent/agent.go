@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"agent-demo/internal/model"
 	"context"
 	"crypto/rand"
 	"fmt"
@@ -43,7 +44,9 @@ func NewAgent(llmClient llm.Client) (*Agent, error) {
 	}, nil
 }
 
-func (a *Agent) Chat(ctx context.Context, sessionID string, question string, requestType string) (string, string, string, error) {
+func (a *Agent) Chat(ctx context.Context, sessionID string, question string, requestType string) (string, string, string, []model.Source, error) {
+	var chunks []document.Chunk
+
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		sessionID = newSessionID()
@@ -51,28 +54,28 @@ func (a *Agent) Chat(ctx context.Context, sessionID string, question string, req
 
 	question = strings.TrimSpace(question)
 	if question == "" {
-		return "", "", sessionID, fmt.Errorf("question is empty")
+		return "", "", sessionID, buildSources(chunks), fmt.Errorf("question is empty")
 	}
 
 	history, err := a.sessionStore.Recent(ctx, sessionID, a.maxHistoryMessage)
 	if err != nil {
-		return "", "", sessionID, fmt.Errorf("load session history: %w", err)
+		return "", "", sessionID, buildSources(chunks), fmt.Errorf("load session history: %w", err)
 	}
 	log.Printf("history: %#v", history)
 
 	intentType, err := a.resolveIntent(ctx, question, requestType)
 	if err != nil {
-		return "", "", sessionID, fmt.Errorf("resolve intent: %w", err)
+		return "", "", sessionID, buildSources(chunks), fmt.Errorf("resolve intent: %w", err)
 	}
 
-	promptText, err := a.buildPrompt(intentType, question, history)
+	promptText, err := a.buildPrompt(intentType, question, history, chunks)
 	if err != nil {
-		return "", "", sessionID, fmt.Errorf("build prompt: %w", err)
+		return "", "", sessionID, buildSources(chunks), fmt.Errorf("build prompt: %w", err)
 	}
-
+	log.Printf("chunks1: %#v", chunks)
 	answer, err := a.llmClient.Generate(ctx, promptText)
 	if err != nil {
-		return "", "", sessionID, fmt.Errorf("generate answer: %w", err)
+		return "", "", sessionID, buildSources(chunks), fmt.Errorf("generate answer: %w", err)
 	}
 
 	now := time.Now()
@@ -91,17 +94,21 @@ func (a *Agent) Chat(ctx context.Context, sessionID string, question string, req
 			CreatedAt: now,
 		},
 	); err != nil {
-		return "", "", sessionID, fmt.Errorf("save session history: %w", err)
+		return "", "", sessionID, buildSources(chunks), fmt.Errorf("save session history: %w", err)
 	}
 
-	return answer, string(intentType), sessionID, nil
+	return answer, string(intentType), sessionID, buildSources(chunks), nil
 }
 
-func (a *Agent) buildPrompt(intentType prompt.Type, question string, history []session.Message) (string, error) {
+func (a *Agent) buildPrompt(intentType prompt.Type, question string, history []session.Message, chunks []document.Chunk) (string, error) {
 	if intentType == prompt.TypeChat {
-		chunks := a.retriever.Retrieve(question, 3)
+		chunks = append(chunks, a.retriever.Retrieve(question, 3)...)
+		log.Printf("chunks21: %#v", chunks)
 		if len(chunks) > 0 {
 			return prompt.BuildRAGPrompt(question, chunks, history), nil
+		}
+		if looksLikeDocumentQuestion(question) {
+			return prompt.BuildRAGPrompt(question, nil, history), nil
 		}
 
 		input := prompt.WithHistory(question, history)
@@ -109,6 +116,48 @@ func (a *Agent) buildPrompt(intentType prompt.Type, question string, history []s
 	}
 
 	return a.promptFactory.Build(intentType, question)
+}
+
+func buildSources(chunks []document.Chunk) []model.Source {
+	result := make([]model.Source, 0, len(chunks))
+
+	for _, chunk := range chunks {
+		result = append(result, model.Source{
+			File:     chunk.Source,
+			ChunkID:  chunk.ID,
+			Content:  chunk.Content,
+			Position: chunk.Position,
+		})
+	}
+
+	return result
+}
+
+func looksLikeDocumentQuestion(question string) bool {
+	text := strings.ToLower(strings.TrimSpace(question))
+
+	keywords := []string{
+		"文档",
+		"知识库",
+		"资料",
+		"根据",
+		"这份",
+		"这个项目",
+		"说明书",
+		"设计文档",
+		"接口文档",
+		"部署文档",
+		"有没有提到",
+		"是否支持",
+	}
+
+	for _, keyword := range keywords {
+		if strings.Contains(text, keyword) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (a *Agent) resolveIntent(ctx context.Context, question string, requestType string) (prompt.Type, error) {

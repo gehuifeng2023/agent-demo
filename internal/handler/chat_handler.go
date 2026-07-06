@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"agent-demo/internal/agent"
@@ -34,7 +35,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	answer, answerType, sessionID, err := h.agent.Chat(r.Context(), req.SessionID, req.Question, req.Type)
+	answer, answerType, sessionID, sources, err := h.agent.Chat(r.Context(), req.SessionID, req.Question, req.Type)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
@@ -42,10 +43,12 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Fatalf("xxx： %#v", sources)
 	resp := model.ChatResponse{
 		SessionID: sessionID,
 		Answer:    answer,
 		Type:      answerType,
+		Sources:   sources,
 	}
 
 	writeJSON(w, http.StatusOK, resp)

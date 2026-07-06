@@ -7,7 +7,8 @@ type ChatRequest struct {
 }
 
 type ChatResponse struct {
-	SessionID string `json:"sessionID"`
-	Answer    string `json:"answer"`
-	Type      string `json:"type"`
+	SessionID string   `json:"sessionID"`
+	Answer    string   `json:"answer"`
+	Type      string   `json:"type"`
+	Sources   []Source `json:"sources,omitempty"`
 }

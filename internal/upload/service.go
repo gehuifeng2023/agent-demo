@@ -26,8 +26,9 @@ func (s *Service) Save(file multipart.File, header *multipart.FileHeader) (id, p
 	if header.Size > s.MaxSize {
 		return "", "", fmt.Errorf("file too large")
 	}
+
 	ext := strings.ToLower(filepath.Ext(header.Filename))
-	if ext != ".md" && ext != ".txt" {
+	if ext != ".md" && ext != ".txt" && ext != ".docx" && ext != ".doc" {
 		return "", "", fmt.Errorf("unsupported file type: %s", ext)
 	}
 

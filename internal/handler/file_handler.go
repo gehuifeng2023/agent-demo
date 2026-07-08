@@ -2,22 +2,25 @@ package handler
 
 import (
 	"agent-demo/internal/agent"
+	"agent-demo/internal/converter"
 	"agent-demo/internal/document"
 	"agent-demo/internal/model"
 	"agent-demo/internal/upload"
+	"context"
 	"net/http"
-	"os"
 )
 
 type FileHandler struct {
 	uploadService *upload.Service
 	agent         *agent.Agent
+	converters    *converter.Registry
 }
 
 func NewFileHandler(dir string, maxSize int64, agentCore *agent.Agent) *FileHandler {
 	return &FileHandler{
 		uploadService: upload.NewService(dir, maxSize),
 		agent:         agentCore,
+		converters:    converter.NewRegistry(converter.DOCXConverter{}, converter.TXTConverter{}, converter.MarkdownConverter{}),
 	}
 }
 
@@ -49,7 +52,13 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	content, err := os.ReadFile(path)
+	/*content, err := os.ReadFile(path)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}*/
+
+	content, err := h.converters.Convert(context.Background(), path)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -58,7 +67,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	chunks := document.SplitByParagraph([]document.Document{
 		{
 			Source:  path,
-			Content: string(content),
+			Content: content,
 		},
 	})
 

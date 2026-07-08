@@ -72,7 +72,7 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if h.agent != nil {
-		h.agent.AddDocumentChunks(chunks)
+		h.agent.StoreFileChunks(id, chunks)
 	}
 
 	writeJSON(w, http.StatusOK, model.UploadResponse{FileID: id, FileName: header.Filename, Size: header.Size})

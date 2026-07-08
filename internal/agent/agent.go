@@ -11,6 +11,7 @@ import (
 
 	"agent-demo/internal/document"
 	"agent-demo/internal/intent"
+	"agent-demo/internal/knowledge"
 	"agent-demo/internal/llm"
 	"agent-demo/internal/prompt"
 	"agent-demo/internal/retriever"
@@ -21,7 +22,7 @@ type Agent struct {
 	llmClient         llm.Client
 	promptFactory     *prompt.Factory
 	classifier        *intent.Classifier
-	retriever         *retriever.KeywordRetriever
+	retriever         *retriever.UnifiedRetriever
 	sessionStore      session.Store
 	maxHistoryMessage int
 }
@@ -33,27 +34,38 @@ func NewAgent(llmClient llm.Client) (*Agent, error) {
 	}
 
 	chunks := document.SplitByParagraph(docs)
+	unifiedRetriever := retriever.NewUnifiedRetriever()
+	unifiedRetriever.RegisterKnowledgeBase(&knowledge.KnowledgeBase{
+		ID:     "default",
+		Chunks: chunks,
+	})
 
 	return &Agent{
 		llmClient:         llmClient,
 		promptFactory:     prompt.NewFactory(),
 		classifier:        intent.NewClassifier(),
-		retriever:         retriever.NewKeywordRetriever(chunks),
+		retriever:         unifiedRetriever,
 		sessionStore:      session.NewMemoryStore(30),
 		maxHistoryMessage: 8,
 	}, nil
 }
 
-func (a *Agent) AddDocumentChunks(chunks []document.Chunk) {
-	a.retriever.AddChunks(chunks)
+func (a *Agent) StoreFileChunks(fileID string, chunks []document.Chunk) {
+	if a.retriever == nil {
+		return
+	}
+
+	a.retriever.StoreFileChunks(fileID, chunks)
 }
 
-func (a *Agent) Chat(ctx context.Context, sessionID string, question string, requestType string) (string, string, string, []model.Source, error) {
+func (a *Agent) Chat(ctx context.Context, req model.ChatRequest) (string, string, string, []model.Source, error) {
+	sessionID := req.SessionID
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		sessionID = newSessionID()
 	}
 
+	question := req.Question
 	question = strings.TrimSpace(question)
 	if question == "" {
 		return "", "", sessionID, nil, fmt.Errorf("question is empty")
@@ -65,12 +77,12 @@ func (a *Agent) Chat(ctx context.Context, sessionID string, question string, req
 	}
 	log.Printf("history: %#v", history)
 
-	intentType, err := a.resolveIntent(ctx, question, requestType)
+	intentType, err := a.resolveIntent(ctx, question, req.Type)
 	if err != nil {
 		return "", "", sessionID, nil, fmt.Errorf("resolve intent: %w", err)
 	}
 
-	chunks := a.retriever.Retrieve(question, 3)
+	chunks := a.retriever.Retrieve(question, compactStrings(req.KnowledgeBaseIDs), compactStrings(req.FileIDs), 3)
 
 	promptText, err := a.buildPrompt(intentType, question, history, chunks)
 	if err != nil {
@@ -101,6 +113,17 @@ func (a *Agent) Chat(ctx context.Context, sessionID string, question string, req
 	}
 
 	return answer, string(intentType), sessionID, buildSources(chunks), nil
+}
+
+func compactStrings(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func (a *Agent) buildPrompt(intentType prompt.Type, question string, history []session.Message, chunks []document.Chunk) (string, error) {

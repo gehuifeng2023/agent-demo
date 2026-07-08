@@ -3,6 +3,7 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -59,6 +60,55 @@ func TestFileHandlerUploadAddsFileToChatRetrieval(t *testing.T) {
 	}
 	if len(chatResp.Sources) == 0 {
 		t.Fatalf("expected uploaded file source, got body=%s", chatRR.Body.String())
+	}
+	if !strings.Contains(chatResp.Sources[0].File, uploadResp.FileID) {
+		t.Fatalf("expected source to include uploaded file id %q, got %q", uploadResp.FileID, chatResp.Sources[0].File)
+	}
+}
+
+func TestFileHandlerUploadCanBeSelectedByFileID(t *testing.T) {
+	restore := chdirRepoRoot(t)
+	defer restore()
+
+	agentCore, err := agent.NewAgent(llm.NewMockClient())
+	if err != nil {
+		t.Fatalf("new agent: %v", err)
+	}
+
+	handler := NewFileHandler(t.TempDir(), 20<<20, agentCore)
+	body, contentType := multipartBody(t, "file", "notes.txt", "BetaProject 支持按文件选择检索。")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/files/upload", body)
+	req.Header.Set("Content-Type", contentType)
+	rr := httptest.NewRecorder()
+
+	handler.Upload(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var uploadResp model.UploadResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &uploadResp); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+
+	chatHandler := NewChatHandler(agentCore)
+	chatBody := fmt.Sprintf(`{"question":"BetaProject 支持什么？","file_ids":[%q]}`, uploadResp.FileID)
+	chatReq := httptest.NewRequest(http.MethodPost, "/api/v1/chat", strings.NewReader(chatBody))
+	chatRR := httptest.NewRecorder()
+
+	chatHandler.ServeHTTP(chatRR, chatReq)
+
+	if chatRR.Code != http.StatusOK {
+		t.Fatalf("expected chat status 200, got %d body=%s", chatRR.Code, chatRR.Body.String())
+	}
+
+	var chatResp model.ChatResponse
+	if err := json.Unmarshal(chatRR.Body.Bytes(), &chatResp); err != nil {
+		t.Fatalf("decode chat response: %v", err)
+	}
+	if len(chatResp.Sources) != 1 {
+		t.Fatalf("expected one uploaded file source, got body=%s", chatRR.Body.String())
 	}
 	if !strings.Contains(chatResp.Sources[0].File, uploadResp.FileID) {
 		t.Fatalf("expected source to include uploaded file id %q, got %q", uploadResp.FileID, chatResp.Sources[0].File)

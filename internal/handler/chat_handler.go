@@ -34,7 +34,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	answer, answerType, sessionID, sources, err := h.agent.Chat(r.Context(), req.SessionID, req.Question, req.Type)
+	answer, answerType, sessionID, sources, err := h.agent.Chat(r.Context(), req)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{
 			"error": err.Error(),

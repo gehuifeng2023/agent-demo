@@ -25,9 +25,11 @@ func main() {
 	}
 
 	chatHandler := handler.NewChatHandler(agentCore)
+	fileHandler := handler.NewFileHandler("uploads", 20<<20, agentCore)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/chat", chatHandler)
+	mux.HandleFunc("/api/v1/files/upload", fileHandler.Upload)
 
 	addr := ":8080"
 

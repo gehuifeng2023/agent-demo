@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"agent-demo/internal/document"
 )
@@ -11,6 +12,7 @@ import (
 var nonAlnumRe = regexp.MustCompile(`[^\p{L}\p{N}]+`)
 
 type KeywordRetriever struct {
+	mu     sync.RWMutex
 	chunks []document.Chunk
 }
 
@@ -26,6 +28,10 @@ func (r *KeywordRetriever) Retrieve(query string, topK int) []document.Chunk {
 		return nil
 	}
 
+	r.mu.RLock()
+	chunks := append([]document.Chunk(nil), r.chunks...)
+	r.mu.RUnlock()
+
 	type scoredChunk struct {
 		chunk document.Chunk
 		score int
@@ -35,7 +41,7 @@ func (r *KeywordRetriever) Retrieve(query string, topK int) []document.Chunk {
 
 	terms := strings.Fields(query)
 
-	for _, chunk := range r.chunks {
+	for _, chunk := range chunks {
 		content := normalizeText(chunk.Content)
 
 		score := 0
@@ -67,6 +73,17 @@ func (r *KeywordRetriever) Retrieve(query string, topK int) []document.Chunk {
 	}
 
 	return result
+}
+
+func (r *KeywordRetriever) AddChunks(chunks []document.Chunk) {
+	if len(chunks) == 0 {
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.chunks = append(r.chunks, chunks...)
 }
 
 func normalizeText(text string) string {

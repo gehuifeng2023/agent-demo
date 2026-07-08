@@ -44,6 +44,10 @@ func NewAgent(llmClient llm.Client) (*Agent, error) {
 	}, nil
 }
 
+func (a *Agent) AddDocumentChunks(chunks []document.Chunk) {
+	a.retriever.AddChunks(chunks)
+}
+
 func (a *Agent) Chat(ctx context.Context, sessionID string, question string, requestType string) (string, string, string, []model.Source, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {

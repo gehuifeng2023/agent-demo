@@ -15,14 +15,7 @@ import (
 )
 
 func TestChatReturnsSourcesForRAGQuestion(t *testing.T) {
-	agent := &Agent{
-		llmClient:         llm.NewMockClient(),
-		promptFactory:     prompt.NewFactory(),
-		classifier:        intent.NewClassifier(),
-		retriever:         testUnifiedRetriever(),
-		sessionStore:      session.NewMemoryStore(30),
-		maxHistoryMessage: 8,
-	}
+	agent := testAgent(testUnifiedRetriever())
 
 	_, answerType, sessionID, sources, err := agent.Chat(context.Background(), model.ChatRequest{Question: "什么是 RAG？"})
 	if err != nil {
@@ -46,14 +39,7 @@ func TestChatReturnsSourcesForRAGQuestion(t *testing.T) {
 }
 
 func TestChatUsesSelectedKnowledgeBase(t *testing.T) {
-	agent := &Agent{
-		llmClient:         llm.NewMockClient(),
-		promptFactory:     prompt.NewFactory(),
-		classifier:        intent.NewClassifier(),
-		retriever:         testUnifiedRetriever(),
-		sessionStore:      session.NewMemoryStore(30),
-		maxHistoryMessage: 8,
-	}
+	agent := testAgent(testUnifiedRetriever())
 
 	_, _, _, sources, err := agent.Chat(context.Background(), model.ChatRequest{
 		Question:         "什么是 RAG？",
@@ -71,14 +57,7 @@ func TestChatUsesSelectedKnowledgeBase(t *testing.T) {
 }
 
 func TestChatIgnoresUnknownKnowledgeBase(t *testing.T) {
-	agent := &Agent{
-		llmClient:         llm.NewMockClient(),
-		promptFactory:     prompt.NewFactory(),
-		classifier:        intent.NewClassifier(),
-		retriever:         testUnifiedRetriever(),
-		sessionStore:      session.NewMemoryStore(30),
-		maxHistoryMessage: 8,
-	}
+	agent := testAgent(testUnifiedRetriever())
 
 	_, _, _, sources, err := agent.Chat(context.Background(), model.ChatRequest{
 		Question:         "什么是 RAG？",
@@ -89,6 +68,44 @@ func TestChatIgnoresUnknownKnowledgeBase(t *testing.T) {
 	}
 	if len(sources) != 0 {
 		t.Fatalf("expected no sources, got %d", len(sources))
+	}
+}
+
+func TestChatUsesKnowledgeAddedAfterAgentCreation(t *testing.T) {
+	unifiedRetriever := retriever.NewUnifiedRetriever()
+	agent := testAgent(unifiedRetriever)
+
+	unifiedRetriever.StoreFileChunks("file-1", []document.Chunk{
+		{
+			ID:       "uploads/file-1.txt-1",
+			Source:   "uploads/file-1.txt",
+			Content:  "GammaProject 支持动态扩充知识库。",
+			Position: 1,
+		},
+	})
+
+	_, _, _, sources, err := agent.Chat(context.Background(), model.ChatRequest{
+		Question: "GammaProject 支持什么？",
+	})
+	if err != nil {
+		t.Fatalf("chat failed: %v", err)
+	}
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source, got %d", len(sources))
+	}
+	if sources[0].File != "uploads/file-1.txt" {
+		t.Fatalf("expected uploaded source, got %q", sources[0].File)
+	}
+}
+
+func testAgent(unifiedRetriever *retriever.UnifiedRetriever) *Agent {
+	return &Agent{
+		llmClient:         llm.NewMockClient(),
+		promptFactory:     prompt.NewFactory(),
+		classifier:        intent.NewClassifier(),
+		retriever:         unifiedRetriever,
+		sessionStore:      session.NewMemoryStore(30),
+		maxHistoryMessage: 8,
 	}
 }
 

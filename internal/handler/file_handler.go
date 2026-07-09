@@ -1,25 +1,29 @@
 package handler
 
 import (
-	"agent-demo/internal/agent"
+	"net/http"
+	"os"
+
 	"agent-demo/internal/converter"
 	"agent-demo/internal/document"
 	"agent-demo/internal/model"
 	"agent-demo/internal/upload"
-	"context"
-	"net/http"
 )
+
+type fileChunkStore interface {
+	StoreFileChunks(fileID string, chunks []document.Chunk)
+}
 
 type FileHandler struct {
 	uploadService *upload.Service
-	agent         *agent.Agent
+	fileStore     fileChunkStore
 	converters    *converter.Registry
 }
 
-func NewFileHandler(dir string, maxSize int64, agentCore *agent.Agent) *FileHandler {
+func NewFileHandler(dir string, maxSize int64, fileStore fileChunkStore) *FileHandler {
 	return &FileHandler{
 		uploadService: upload.NewService(dir, maxSize),
-		agent:         agentCore,
+		fileStore:     fileStore,
 		converters:    converter.NewRegistry(converter.DOCXConverter{}, converter.TXTConverter{}, converter.MarkdownConverter{}),
 	}
 }
@@ -52,14 +56,9 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	/*content, err := os.ReadFile(path)
+	content, err := h.converters.Convert(r.Context(), path)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}*/
-
-	content, err := h.converters.Convert(context.Background(), path)
-	if err != nil {
+		_ = os.Remove(path)
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -71,8 +70,8 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 
-	if h.agent != nil {
-		h.agent.StoreFileChunks(id, chunks)
+	if h.fileStore != nil {
+		h.fileStore.StoreFileChunks(id, chunks)
 	}
 
 	writeJSON(w, http.StatusOK, model.UploadResponse{FileID: id, FileName: header.Filename, Size: header.Size})

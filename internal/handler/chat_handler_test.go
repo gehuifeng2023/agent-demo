@@ -11,18 +11,18 @@ import (
 	"testing"
 
 	"agent-demo/internal/agent"
+	"agent-demo/internal/document"
+	"agent-demo/internal/knowledge"
 	"agent-demo/internal/llm"
 	"agent-demo/internal/model"
+	"agent-demo/internal/retriever"
 )
 
 func TestChatHandlerReturnsSources(t *testing.T) {
 	restore := chdirRepoRoot(t)
 	defer restore()
 
-	agentCore, err := agent.NewAgent(llm.NewMockClient())
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
+	agentCore := agent.NewAgent(llm.NewMockClient(), defaultTestRetriever(t))
 
 	handler := NewChatHandler(agentCore)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat", strings.NewReader(`{"question":"什么是 RAG？"}`))
@@ -41,8 +41,8 @@ func TestChatHandlerReturnsSources(t *testing.T) {
 	if len(resp.Sources) == 0 {
 		t.Fatalf("expected sources in response, got body=%s", rr.Body.String())
 	}
-	if resp.Sources[0].File != "docs/faq.md" {
-		t.Fatalf("expected docs/faq.md, got %q", resp.Sources[0].File)
+	if resp.Sources[0].File != "knowledge_attachment/default/faq.md" {
+		t.Fatalf("expected knowledge_attachment/default/faq.md, got %q", resp.Sources[0].File)
 	}
 }
 
@@ -50,10 +50,7 @@ func TestChatHandlerUsesSelectedKnowledgeBase(t *testing.T) {
 	restore := chdirRepoRoot(t)
 	defer restore()
 
-	agentCore, err := agent.NewAgent(llm.NewMockClient())
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
+	agentCore := agent.NewAgent(llm.NewMockClient(), defaultTestRetriever(t))
 
 	handler := NewChatHandler(agentCore)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat", strings.NewReader(`{"question":"什么是 RAG？","knowledge_base_ids":["default"]}`))
@@ -72,9 +69,25 @@ func TestChatHandlerUsesSelectedKnowledgeBase(t *testing.T) {
 	if len(resp.Sources) == 0 {
 		t.Fatalf("expected sources in response, got body=%s", rr.Body.String())
 	}
-	if resp.Sources[0].File != "docs/faq.md" {
-		t.Fatalf("expected docs/faq.md, got %q", resp.Sources[0].File)
+	if resp.Sources[0].File != "knowledge_attachment/default/faq.md" {
+		t.Fatalf("expected knowledge_attachment/default/faq.md, got %q", resp.Sources[0].File)
 	}
+}
+
+func defaultTestRetriever(t *testing.T) *retriever.UnifiedRetriever {
+	t.Helper()
+
+	docs, err := document.LoadFromDir("knowledge_attachment/default/")
+	if err != nil {
+		t.Fatalf("load default knowledge: %v", err)
+	}
+
+	unifiedRetriever := retriever.NewUnifiedRetriever()
+	unifiedRetriever.RegisterKnowledgeBase(&knowledge.KnowledgeBase{
+		ID:     "default",
+		Chunks: document.SplitByParagraph(docs),
+	})
+	return unifiedRetriever
 }
 
 func chdirRepoRoot(t *testing.T) func() {

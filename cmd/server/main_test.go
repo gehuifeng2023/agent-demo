@@ -1,6 +1,8 @@
 package main
 
 import (
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"agent-demo/internal/llm"
@@ -63,4 +65,21 @@ func TestNewLLMClientFromEnv(t *testing.T) {
 			t.Fatal("expected error for unsupported mode")
 		}
 	})
+}
+
+func TestNewRetrieverFromDefaultKnowledge(t *testing.T) {
+	dir := filepath.Join("..", "..", "knowledge_attachment", "default")
+
+	unifiedRetriever, err := newRetrieverFromDefaultKnowledge(dir)
+	if err != nil {
+		t.Fatalf("newRetrieverFromDefaultKnowledge failed: %v", err)
+	}
+
+	chunks := unifiedRetriever.Retrieve("RAG", []string{"default"}, nil, 3)
+	if len(chunks) == 0 {
+		t.Fatal("expected default knowledge chunks")
+	}
+	if !strings.Contains(chunks[0].Source, "faq.md") {
+		t.Fatalf("expected faq source, got %q", chunks[0].Source)
+	}
 }

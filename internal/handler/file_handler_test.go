@@ -7,24 +7,25 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"agent-demo/internal/agent"
 	"agent-demo/internal/llm"
 	"agent-demo/internal/model"
+	"agent-demo/internal/retriever"
 )
 
 func TestFileHandlerUploadAddsFileToChatRetrieval(t *testing.T) {
 	restore := chdirRepoRoot(t)
 	defer restore()
 
-	agentCore, err := agent.NewAgent(llm.NewMockClient())
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
+	unifiedRetriever := retriever.NewUnifiedRetriever()
+	agentCore := agent.NewAgent(llm.NewMockClient(), unifiedRetriever)
 
-	handler := NewFileHandler(t.TempDir(), 20<<20, agentCore)
+	handler := NewFileHandler(t.TempDir(), 20<<20, unifiedRetriever)
 	body, contentType := multipartBody(t, "file", "notes.txt", "AlphaProject 支持文件上传检索。\n\n第二段内容。")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/files/upload", body)
 	req.Header.Set("Content-Type", contentType)
@@ -70,12 +71,10 @@ func TestFileHandlerUploadCanBeSelectedByFileID(t *testing.T) {
 	restore := chdirRepoRoot(t)
 	defer restore()
 
-	agentCore, err := agent.NewAgent(llm.NewMockClient())
-	if err != nil {
-		t.Fatalf("new agent: %v", err)
-	}
+	unifiedRetriever := retriever.NewUnifiedRetriever()
+	agentCore := agent.NewAgent(llm.NewMockClient(), unifiedRetriever)
 
-	handler := NewFileHandler(t.TempDir(), 20<<20, agentCore)
+	handler := NewFileHandler(t.TempDir(), 20<<20, unifiedRetriever)
 	body, contentType := multipartBody(t, "file", "notes.txt", "BetaProject 支持按文件选择检索。")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/files/upload", body)
 	req.Header.Set("Content-Type", contentType)
@@ -116,8 +115,7 @@ func TestFileHandlerUploadCanBeSelectedByFileID(t *testing.T) {
 }
 
 func TestFileHandlerUploadRejectsUnsupportedFileType(t *testing.T) {
-	agentCore := &agent.Agent{}
-	handler := NewFileHandler(t.TempDir(), 20<<20, agentCore)
+	handler := NewFileHandler(t.TempDir(), 20<<20, nil)
 	body, contentType := multipartBody(t, "file", "notes.pdf", "not supported")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/files/upload", body)
 	req.Header.Set("Content-Type", contentType)
@@ -133,9 +131,42 @@ func TestFileHandlerUploadRejectsUnsupportedFileType(t *testing.T) {
 	}
 }
 
+func TestFileHandlerUploadDocUsesWordConverterAndCleansFailedFile(t *testing.T) {
+	uploadDir := t.TempDir()
+	handler := NewFileHandler(uploadDir, 20<<20, nil)
+	body, contentType := multipartBody(t, "file", "notes.doc", "not a word document")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/files/upload", body)
+	req.Header.Set("Content-Type", contentType)
+	rr := httptest.NewRecorder()
+
+	handler.Upload(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "unsupported file type") {
+		t.Fatalf("expected .doc to use word converter, got body=%s", rr.Body.String())
+	}
+
+	var savedFiles []string
+	if err := filepath.WalkDir(uploadDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			savedFiles = append(savedFiles, path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk upload dir: %v", err)
+	}
+	if len(savedFiles) != 0 {
+		t.Fatalf("expected failed conversion file to be removed, got %v", savedFiles)
+	}
+}
+
 func TestFileHandlerUploadRequiresFile(t *testing.T) {
-	agentCore := &agent.Agent{}
-	handler := NewFileHandler(t.TempDir(), 20<<20, agentCore)
+	handler := NewFileHandler(t.TempDir(), 20<<20, nil)
 	body, contentType := multipartBody(t, "other", "notes.txt", "missing file field")
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/files/upload", body)
 	req.Header.Set("Content-Type", contentType)

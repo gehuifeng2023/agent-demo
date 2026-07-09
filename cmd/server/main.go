@@ -1,7 +1,6 @@
 package main
 
 import (
-	"agent-demo/internal/llm"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,7 +8,11 @@ import (
 	"strings"
 
 	"agent-demo/internal/agent"
+	"agent-demo/internal/document"
 	"agent-demo/internal/handler"
+	"agent-demo/internal/knowledge"
+	"agent-demo/internal/llm"
+	"agent-demo/internal/retriever"
 )
 
 func main() {
@@ -19,13 +22,14 @@ func main() {
 	}
 	log.Printf("LLM mode: %s", mode)
 
-	agentCore, err := agent.NewAgent(llmClient)
+	unifiedRetriever, err := newRetrieverFromDefaultKnowledge("knowledge_attachment/default/")
 	if err != nil {
-		panic(err)
+		log.Fatalf("load default knowledge: %v", err)
 	}
+	agentCore := agent.NewAgent(llmClient, unifiedRetriever)
 
 	chatHandler := handler.NewChatHandler(agentCore)
-	fileHandler := handler.NewFileHandler("uploads", 20<<20, agentCore)
+	fileHandler := handler.NewFileHandler("knowledge_attachment/days", 20<<20, unifiedRetriever)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/chat", chatHandler)
@@ -38,6 +42,20 @@ func main() {
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("server stopped: %v", err)
 	}
+}
+
+func newRetrieverFromDefaultKnowledge(dir string) (*retriever.UnifiedRetriever, error) {
+	docs, err := document.LoadFromDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("load docs: %w", err)
+	}
+
+	unifiedRetriever := retriever.NewUnifiedRetriever()
+	unifiedRetriever.RegisterKnowledgeBase(&knowledge.KnowledgeBase{
+		ID:     "default",
+		Chunks: document.SplitByParagraph(docs),
+	})
+	return unifiedRetriever, nil
 }
 
 func newLLMClientFromEnv() (llm.Client, string, error) {

@@ -1,9 +1,9 @@
 package agent
 
 import (
-	"agent-demo/internal/model"
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -11,8 +11,8 @@ import (
 
 	"agent-demo/internal/document"
 	"agent-demo/internal/intent"
-	"agent-demo/internal/knowledge"
 	"agent-demo/internal/llm"
+	"agent-demo/internal/model"
 	"agent-demo/internal/prompt"
 	"agent-demo/internal/retriever"
 	"agent-demo/internal/session"
@@ -27,18 +27,10 @@ type Agent struct {
 	maxHistoryMessage int
 }
 
-func NewAgent(llmClient llm.Client) (*Agent, error) {
-	docs, err := document.LoadFromDir("docs")
-	if err != nil {
-		return nil, fmt.Errorf("load docs: %w", err)
+func NewAgent(llmClient llm.Client, unifiedRetriever *retriever.UnifiedRetriever) *Agent {
+	if unifiedRetriever == nil {
+		unifiedRetriever = retriever.NewUnifiedRetriever()
 	}
-
-	chunks := document.SplitByParagraph(docs)
-	unifiedRetriever := retriever.NewUnifiedRetriever()
-	unifiedRetriever.RegisterKnowledgeBase(&knowledge.KnowledgeBase{
-		ID:     "default",
-		Chunks: chunks,
-	})
 
 	return &Agent{
 		llmClient:         llmClient,
@@ -47,15 +39,7 @@ func NewAgent(llmClient llm.Client) (*Agent, error) {
 		retriever:         unifiedRetriever,
 		sessionStore:      session.NewMemoryStore(30),
 		maxHistoryMessage: 8,
-	}, nil
-}
-
-func (a *Agent) StoreFileChunks(fileID string, chunks []document.Chunk) {
-	if a.retriever == nil {
-		return
 	}
-
-	a.retriever.StoreFileChunks(fileID, chunks)
 }
 
 func (a *Agent) Chat(ctx context.Context, req model.ChatRequest) (string, string, string, []model.Source, error) {
@@ -94,7 +78,6 @@ func (a *Agent) Chat(ctx context.Context, req model.ChatRequest) (string, string
 	}
 
 	now := time.Now()
-
 	if err := a.sessionStore.Append(
 		ctx,
 		sessionID,

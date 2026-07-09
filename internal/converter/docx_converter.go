@@ -7,7 +7,7 @@ import (
 
 type DOCXConverter struct{}
 
-func (c DOCXConverter) Support(ext string) bool { return ext == ".docx" }
+func (c DOCXConverter) Support(ext string) bool { return ext == ".docx" || ext == ".doc" }
 func (c DOCXConverter) Convert(ctx context.Context, path string) (string, error) {
 	doc, err := docx.ReadDocxFile(path)
 	if err != nil {

@@ -30,10 +30,13 @@ func main() {
 
 	chatHandler := handler.NewChatHandler(agentCore)
 	fileHandler := handler.NewFileHandler("knowledge_attachment/days", 20<<20, unifiedRetriever)
+	knowledgeHandler := handler.NewKnowledgeHandler(unifiedRetriever)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/chat", chatHandler)
 	mux.HandleFunc("/api/v1/files/upload", fileHandler.Upload)
+	mux.HandleFunc("/api/v1/knowledge", knowledgeHandler.List)
+	mux.HandleFunc("/api/v1/knowledge/retrieve", knowledgeHandler.Recall)
 
 	addr := ":8080"
 

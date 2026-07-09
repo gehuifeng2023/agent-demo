@@ -45,3 +45,14 @@ func (f *FileDocumentStore) AllChunks() []document.Chunk {
 	}
 	return out
 }
+
+func (f *FileDocumentStore) AllByFileID() map[string][]document.Chunk {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+
+	out := make(map[string][]document.Chunk, len(f.chunks))
+	for fileID, chunks := range f.chunks {
+		out[fileID] = append([]document.Chunk(nil), chunks...)
+	}
+	return out
+}

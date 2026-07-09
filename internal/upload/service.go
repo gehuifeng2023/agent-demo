@@ -20,8 +20,9 @@ func NewService(dir string, maxSize int64) *Service {
 }
 
 func (s *Service) Save(file multipart.File, header *multipart.FileHeader) (id, path string, err error) {
-	if s.MaxSize <= 0 {
-		s.MaxSize = 20 << 20
+	maxSize := s.MaxSize
+	if maxSize <= 0 {
+		maxSize = 20 << 20
 	}
 	if header.Size > s.MaxSize {
 		return "", "", fmt.Errorf("file too large")

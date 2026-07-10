@@ -1,128 +1,338 @@
 # Agent Demo
 
-一个使用Go语言构建的代理演示项目。
+`agent-demo` 是一个 Go 实现的 RAG Agent Demo。服务启动时加载默认知识库，运行过程中可以上传文件扩充知识库，并提供聊天问答、全量知识库查看和按问题召回知识库内容的 HTTP API。
 
-## 项目概述
+## 功能概览
 
-`agent-demo` 是一个 Go 项目，用于演示和实现代理相关的功能。项目遵循清晰的代码组织结构和开发规范。
+- 启动时加载 `knowledge_attachment/default/` 下的 Markdown 文件作为默认知识库，知识库 ID 为 `default`。
+- 支持上传 `.md`、`.txt`、`.docx`、`.doc` 文件，上传内容会切分为 chunks 并写入共享召回器。
+- Chat API 每次请求都会从共享召回器读取最新知识库内容。
+- Knowledge API 支持查看全部 chunks，也支持只根据问题做知识库召回。
+- LLM 支持 `mock`、`openai`、`gemini` 三种模式。
+- 运行参数从 `configs/local.yaml` 读取，也可以通过 `CONFIG_PATH` 指定其他配置文件。
 
 ## 技术栈
 
-- **语言**: Go 1.25
-- **依赖**:
-  - `gopkg.in/yaml.v3 v3.0.1` - YAML配置文件处理
+- Go 1.25+
+- `gopkg.in/yaml.v3`：YAML 配置解析
+- `github.com/nguyenthenguyen/docx`：Word 文档内容读取
 
 ## 项目结构
 
-```
+```text
 agent-demo/
-├── cmd/                    # 命令行应用入口
-├── internal/               # 内部包（私有实现）
-├── docs/                   # 项目文档
-├── go.mod                  # Go模块定义
-├── go.sum                  # Go依赖校验
-├── AGENTS.md              # 开发指南和规范
-└── .gitignore             # Git忽略文件
+├── cmd/server/                 # HTTP 服务入口
+├── configs/                    # 本地配置目录，默认被 .gitignore 忽略
+├── internal/agent/             # Agent 编排：意图识别、召回、Prompt、LLM、会话
+├── internal/config/            # 配置结构、默认值和加载逻辑
+├── internal/converter/         # 上传文件转换器
+├── internal/document/          # 文档加载和 chunk 切分
+├── internal/handler/           # HTTP handler
+├── internal/knowledge/         # 默认知识库注册表
+├── internal/llm/               # Mock/OpenAI/Gemini LLM client
+├── internal/retriever/         # 统一召回器和关键词召回
+├── internal/session/           # 内存会话存储
+├── internal/upload/            # 上传文件保存和上传文件知识库
+├── knowledge_attachment/
+│   ├── default/                # 启动加载的默认知识库
+│   └── days/                   # 上传文件保存目录，默认被 .gitignore 忽略
+├── scripts/                    # 本地脚本
+├── go.mod
+└── README.md
 ```
 
-## 开发指南
+## 配置
 
-本项目遵循严格的开发规范，详见 [AGENTS.md](./AGENTS.md)。
+服务默认读取：
 
-### 核心原则
+```bash
+configs/local.yaml
+```
 
-- **增量开发优于大规模重构** - 小的、可编译和通过测试的改动
-- **学习现有代码** - 在实现前研究和规划
-- **实用胜过教条** - 适应项目现实情况
-- **意图清晰优于复杂技巧** - 保持代码简洁易懂
+也可以通过环境变量覆盖配置路径：
 
-### 开发流程
+```bash
+CONFIG_PATH=/path/to/local.yaml go run ./cmd/server
+```
 
-1. **理解** - 研究现有代码中的模式
-2. **测试** - 先写测试（红）
-3. **实现** - 编写最小代码使测试通过（绿）
-4. **重构** - 在测试通过的基础上清理代码
-5. **提交** - 清晰的提交信息链接到计划
+当前 `configs/local.yaml` 是本地配置文件，仓库 `.gitignore` 默认忽略 `/configs`。默认配置结构如下：
 
-### 代码质量标准
+```yaml
+server:
+  addr: ":8080"
 
-每次提交必须满足：
-- ✅ 代码能成功编译
-- ✅ 所有现有测试通过
-- ✅ 新功能包含相应测试
-- ✅ 遵循项目格式和linting规范
+llm:
+  mode: mock
+  api_key: ""
+  model: ""
+  base_url: ""
+  timeout_seconds: 60
 
-### 定义完成
+rag:
+  docs_dir: ""
+  top_k: 3
 
-- [ ] 测试编写完成且通过
-- [ ] 代码遵循项目规范
-- [ ] 无linter/formatter警告
-- [ ] 提交信息清晰
-- [ ] 实现与计划一致
-- [ ] 无无号的TODO注释
+upload:
+  dir: knowledge_attachment/days
+  max_size_mb: 20
+
+knowledge:
+  root_dir: knowledge_attachment/default/
+
+session:
+  max_messages: 30
+  recent_limit: 8
+
+intent:
+  mode: rule
+```
+
+关键字段说明：
+
+- `server.addr`：HTTP 服务监听地址。
+- `llm.mode`：`mock`、`openai` 或 `gemini`。
+- `llm.api_key`：LLM API key。为空时 OpenAI/Gemini 会 fallback 到 `OPENAI_API_KEY` / `GEMINI_API_KEY`。
+- `llm.model`：LLM 模型名。为空时会 fallback 到 `LLM_MODEL` 或 client 默认模型。
+- `llm.base_url`：LLM base URL。为空时使用 client 默认地址。
+- `llm.timeout_seconds`：LLM 请求超时时间。
+- `knowledge.root_dir`：启动时加载的默认知识库目录。
+- `upload.dir`：上传文件保存根目录。
+- `upload.max_size_mb`：上传文件大小限制。
+- `rag.top_k`：聊天和知识库召回默认返回 chunk 数。
+- `session.max_messages`：每个 session 最多保存的消息数。
+- `session.recent_limit`：构建 Prompt 时读取的最近消息数。
 
 ## 快速开始
 
-### 前提条件
-
-- Go 1.25 或更高版本
-
-### 安装依赖
+安装依赖：
 
 ```bash
 go mod download
 ```
 
-### 构建
+使用 mock LLM 启动服务：
+
+```bash
+CONFIG_PATH=configs/local.yaml go run ./cmd/server
+```
+
+构建：
 
 ```bash
 go build ./cmd/...
 ```
 
-### 测试
+测试：
 
 ```bash
-go test ./...
+GOCACHE=/tmp/agent-demo-go-build go test ./... -count=1
 ```
 
-## 注意事项
+## LLM 模式
 
-### 禁止事项
+Mock 模式适合本地开发，不需要 API key：
 
-- ❌ 使用 `--no-verify` 绕过提交钩子
-- ❌ 禁用测试而不修复它们
-- ❌ 提交无法编译的代码
-- ❌ 做假设 - 用现有代码验证
+```yaml
+llm:
+  mode: mock
+```
 
-### 必须做的事
+OpenAI 模式：
 
-- ✅ 增量提交可工作代码
-- ✅ 开发过程中更新计划文档
-- ✅ 从现有实现中学习
-- ✅ 多次失败后停下来重新评估（最多3次尝试）
+```yaml
+llm:
+  mode: openai
+  api_key: "你的 OPENAI API Key"
+  model: "gpt-5.5"
+```
 
-## 架构原则
+Gemini 模式：
 
-- **组合优于继承** - 使用依赖注入
-- **接口优于单例** - 启用测试和灵活性
-- **显式优于隐式** - 清晰的数据流和依赖关系
-- **尽可能进行测试驱动开发** - 从不禁用测试，修复它们
+```yaml
+llm:
+  mode: gemini
+  api_key: "你的 GEMINI API Key"
+  model: "gemini-3.5-flash"
+```
 
-## 错误处理
+如果 `api_key` 或 `model` 没有配置，服务会继续读取环境变量：
 
-- 快速失败，提供描述性信息
-- 包含调试上下文
-- 在适当级别处理错误
-- 永不静默吞掉异常
+- `OPENAI_API_KEY`
+- `GEMINI_API_KEY`
+- `LLM_MODEL`
 
-## 许可证
+## API
 
-该项目目前未指定许可证。
+默认服务地址为 `http://localhost:8080`。
 
-## 贡献
+### 聊天问答
 
-请阅读 [AGENTS.md](./AGENTS.md) 了解详细的开发指南和贡献规范。
+```http
+POST /api/v1/chat
+Content-Type: application/json
+```
 
----
+请求示例：
 
-*最后更新: 2026-07-02*
+```json
+{
+  "question": "什么是 RAG？",
+  "sessionID": "s1",
+  "knowledge_base_ids": ["default"],
+  "file_ids": []
+}
+```
+
+字段说明：
+
+- `question`：必填，用户问题。
+- `sessionID`：可选，会话 ID。为空时服务自动生成。
+- `type`：可选，指定 Prompt 类型；为空时使用规则分类。
+- `knowledge_base_ids`：可选，指定默认知识库 ID，例如 `default`。
+- `file_ids`：可选，指定上传文件 ID。
+
+响应示例：
+
+```json
+{
+  "sessionID": "s1",
+  "answer": "这是 Mock LLM 返回的回答...",
+  "type": "chat",
+  "sources": [
+    {
+      "file": "knowledge_attachment/default/faq.md",
+      "chunk_id": "knowledge_attachment/default/faq.md-1",
+      "content": "...",
+      "position": 1
+    }
+  ]
+}
+```
+
+### 上传文件扩充知识库
+
+```http
+POST /api/v1/files/upload
+Content-Type: multipart/form-data
+```
+
+请求示例：
+
+```bash
+curl -F "file=@notes.txt" http://localhost:8080/api/v1/files/upload
+```
+
+响应示例：
+
+```json
+{
+  "file_id": "f-1783607989609598778",
+  "file_name": "notes.txt",
+  "size": 128
+}
+```
+
+说明：
+
+- 支持 `.md`、`.txt`、`.docx`、`.doc`。
+- 文件保存到 `upload.dir/YYYY-MM-DD/`。
+- 转换成功后 chunks 写入共享召回器，后续 chat 和 knowledge API 可以立即召回。
+
+### 获取全量知识库信息
+
+```http
+GET /api/v1/knowledge
+```
+
+响应示例：
+
+```json
+{
+  "chunks": [
+    {
+      "type": "knowledge_base",
+      "knowledge_base_id": "default",
+      "file": "knowledge_attachment/default/faq.md",
+      "chunk_id": "knowledge_attachment/default/faq.md-1",
+      "content": "...",
+      "position": 1
+    },
+    {
+      "type": "file",
+      "file_id": "f-1783607989609598778",
+      "file": "knowledge_attachment/days/2026-07-10/f-1783607989609598778.txt",
+      "chunk_id": "...",
+      "content": "...",
+      "position": 1
+    }
+  ]
+}
+```
+
+### 根据问题召回知识库信息
+
+```http
+POST /api/v1/knowledge/retrieve
+Content-Type: application/json
+```
+
+请求示例：
+
+```json
+{
+  "question": "RAG 是什么？",
+  "knowledge_base_ids": ["default"],
+  "file_ids": [],
+  "top_k": 3
+}
+```
+
+响应示例：
+
+```json
+{
+  "question": "RAG 是什么？",
+  "chunks": [
+    {
+      "type": "knowledge_base",
+      "knowledge_base_id": "default",
+      "file": "knowledge_attachment/default/faq.md",
+      "chunk_id": "knowledge_attachment/default/faq.md-1",
+      "content": "...",
+      "position": 1
+    }
+  ]
+}
+```
+
+说明：
+
+- 该接口只做召回，不调用 LLM。
+- `top_k` 小于等于 0 时使用 `rag.top_k`。
+- 不传 `knowledge_base_ids` 和 `file_ids` 时，默认从所有默认知识库和上传文件中召回。
+
+## 知识库流程
+
+1. 服务启动时读取 `knowledge.root_dir`。
+2. `document.LoadFromDir` 加载目录下的 `.md` 文件。
+3. `document.SplitByParagraph` 按段落切分为 chunks。
+4. 默认 chunks 注册到 `UnifiedRetriever`，知识库 ID 为 `default`。
+5. 上传文件转换成功后，文件 chunks 通过同一个 `UnifiedRetriever` 存储。
+6. Chat API 和 Knowledge API 每次请求都从共享 `UnifiedRetriever` 读取最新内容。
+
+## 开发说明
+
+- 默认知识库目前只加载 Markdown 文件。
+- 上传文件知识库保存在内存中，服务重启后不会自动恢复历史上传 chunks。
+- `knowledge_attachment/days/` 是上传文件目录，默认被 `.gitignore` 忽略。
+- `configs/local.yaml` 是本地运行配置，默认被 `.gitignore` 忽略。
+- 详细开发规范见 [AGENTS.md](./AGENTS.md)。
+
+## 常用命令
+
+```bash
+go mod download
+GOCACHE=/tmp/agent-demo-go-build go test ./... -count=1
+go build ./cmd/...
+CONFIG_PATH=configs/local.yaml go run ./cmd/server
+```

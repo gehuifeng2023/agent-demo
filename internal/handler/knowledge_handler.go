@@ -9,17 +9,23 @@ import (
 	"agent-demo/internal/retriever"
 )
 
-const defaultKnowledgeRecallTopK = 3
-
 type KnowledgeHandler struct {
-	retriever *retriever.UnifiedRetriever
+	retriever   *retriever.UnifiedRetriever
+	defaultTopK int
 }
 
 func NewKnowledgeHandler(unifiedRetriever *retriever.UnifiedRetriever) *KnowledgeHandler {
+	return NewKnowledgeHandlerWithTopK(unifiedRetriever, 3)
+}
+
+func NewKnowledgeHandlerWithTopK(unifiedRetriever *retriever.UnifiedRetriever, defaultTopK int) *KnowledgeHandler {
 	if unifiedRetriever == nil {
 		unifiedRetriever = retriever.NewUnifiedRetriever()
 	}
-	return &KnowledgeHandler{retriever: unifiedRetriever}
+	if defaultTopK <= 0 {
+		defaultTopK = 3
+	}
+	return &KnowledgeHandler{retriever: unifiedRetriever, defaultTopK: defaultTopK}
 }
 
 func (h *KnowledgeHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +59,7 @@ func (h *KnowledgeHandler) Recall(w http.ResponseWriter, r *http.Request) {
 
 	topK := req.TopK
 	if topK <= 0 {
-		topK = defaultKnowledgeRecallTopK
+		topK = h.defaultTopK
 	}
 
 	chunks := h.retriever.RetrieveChunks(

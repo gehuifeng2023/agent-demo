@@ -30,12 +30,29 @@ func NewGeminiClient() (*GeminiClient, error) {
 		model = "gemini-3.5-flash"
 	}
 
+	return NewGeminiClientWithConfig(apiKey, model, "", 60*time.Second)
+}
+
+func NewGeminiClientWithConfig(apiKey string, model string, baseURL string, timeout time.Duration) (*GeminiClient, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("GEMINI_API_KEY is empty")
+	}
+	if model == "" {
+		model = "gemini-3.5-flash"
+	}
+	if baseURL == "" {
+		baseURL = "https://generativelanguage.googleapis.com/v1beta"
+	}
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+
 	return &GeminiClient{
 		apiKey:  apiKey,
 		model:   model,
-		baseURL: "https://generativelanguage.googleapis.com/v1beta",
+		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout: timeout,
 		},
 	}, nil
 }

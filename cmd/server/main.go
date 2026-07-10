@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"agent-demo/internal/agent"
+	"agent-demo/internal/config"
 	"agent-demo/internal/document"
 	"agent-demo/internal/handler"
 	"agent-demo/internal/knowledge"
@@ -16,21 +17,30 @@ import (
 )
 
 func main() {
-	llmClient, mode, err := newLLMClientFromEnv()
+	cfg, err := loadConfig()
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
+
+	llmClient, mode, err := newLLMClientFromConfig(cfg)
 	if err != nil {
 		log.Fatalf("create llm client: %v", err)
 	}
 	log.Printf("LLM mode: %s", mode)
 
-	unifiedRetriever, err := newRetrieverFromDefaultKnowledge("knowledge_attachment/default/")
+	unifiedRetriever, err := newRetrieverFromDefaultKnowledge(cfg.Knowledge.RootDir)
 	if err != nil {
 		log.Fatalf("load default knowledge: %v", err)
 	}
-	agentCore := agent.NewAgent(llmClient, unifiedRetriever)
+	agentCore := agent.NewAgentWithOptions(llmClient, unifiedRetriever, agent.Options{
+		TopK:               cfg.RAG.TopK,
+		SessionMaxMessages: cfg.Session.MaxMessages,
+		MaxHistoryMessage:  cfg.Session.RecentLimit,
+	})
 
 	chatHandler := handler.NewChatHandler(agentCore)
-	fileHandler := handler.NewFileHandler("knowledge_attachment/days", 20<<20, unifiedRetriever)
-	knowledgeHandler := handler.NewKnowledgeHandler(unifiedRetriever)
+	fileHandler := handler.NewFileHandler(cfg.Upload.Dir, cfg.UploadMaxBytes(), unifiedRetriever)
+	knowledgeHandler := handler.NewKnowledgeHandlerWithTopK(unifiedRetriever, cfg.RAG.TopK)
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/chat", chatHandler)
@@ -38,13 +48,19 @@ func main() {
 	mux.HandleFunc("/api/v1/knowledge", knowledgeHandler.List)
 	mux.HandleFunc("/api/v1/knowledge/retrieve", knowledgeHandler.Recall)
 
-	addr := ":8080"
+	log.Printf("agent-demo server started, addr=%s", cfg.Server.Addr)
 
-	log.Printf("agent-demo server started, addr=%s", addr)
-
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	if err := http.ListenAndServe(cfg.Server.Addr, mux); err != nil {
 		log.Fatalf("server stopped: %v", err)
 	}
+}
+
+func loadConfig() (*config.Config, error) {
+	path := strings.TrimSpace(os.Getenv("CONFIG_PATH"))
+	if path == "" {
+		path = config.DefaultConfigPath
+	}
+	return config.Load(path)
 }
 
 func newRetrieverFromDefaultKnowledge(dir string) (*retriever.UnifiedRetriever, error) {
@@ -61,12 +77,19 @@ func newRetrieverFromDefaultKnowledge(dir string) (*retriever.UnifiedRetriever, 
 	return unifiedRetriever, nil
 }
 
-func newLLMClientFromEnv() (llm.Client, string, error) {
-	mode := strings.ToLower(strings.TrimSpace(os.Getenv("LLM_MODE")))
+func newLLMClientFromConfig(cfg *config.Config) (llm.Client, string, error) {
+	if cfg == nil {
+		cfg = &config.Config{}
+		cfg.ApplyDefaults()
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(cfg.LLM.Mode))
 
 	switch mode {
 	case "", "openai":
-		client, err := llm.NewOpenAIClient()
+		apiKey := firstNonEmpty(cfg.LLM.APIKey, os.Getenv("OPENAI_API_KEY"))
+		model := firstNonEmpty(cfg.LLM.Model, os.Getenv("LLM_MODEL"))
+		client, err := llm.NewOpenAIClientWithConfig(apiKey, model, cfg.LLM.BaseURL, cfg.LLMTimeout())
 		if err != nil {
 			return nil, "openai", err
 		}
@@ -74,7 +97,9 @@ func newLLMClientFromEnv() (llm.Client, string, error) {
 	case "mock":
 		return llm.NewMockClient(), "mock", nil
 	case "gemini":
-		client, err := llm.NewGeminiClient()
+		apiKey := firstNonEmpty(cfg.LLM.APIKey, os.Getenv("GEMINI_API_KEY"))
+		model := firstNonEmpty(cfg.LLM.Model, os.Getenv("LLM_MODEL"))
+		client, err := llm.NewGeminiClientWithConfig(apiKey, model, cfg.LLM.BaseURL, cfg.LLMTimeout())
 		if err != nil {
 			return nil, "gemini", err
 		}
@@ -82,4 +107,14 @@ func newLLMClientFromEnv() (llm.Client, string, error) {
 	default:
 		return nil, "", fmt.Errorf("unsupported LLM_MODE: %s", mode)
 	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

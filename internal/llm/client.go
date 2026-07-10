@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type Client interface {
 type OpenAIClient struct {
 	apiKey     string
 	model      string
+	baseURL    string
 	httpClient *http.Client
 }
 
@@ -32,11 +34,30 @@ func NewOpenAIClient() (*OpenAIClient, error) {
 		model = "gpt-5.5"
 	}
 
+	return NewOpenAIClientWithConfig(apiKey, model, "", 60*time.Second)
+}
+
+func NewOpenAIClientWithConfig(apiKey string, model string, baseURL string, timeout time.Duration) (*OpenAIClient, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY is empty")
+	}
+	if model == "" {
+		model = "gpt-5.5"
+	}
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+	baseURL = strings.TrimRight(baseURL, "/")
+	if timeout <= 0 {
+		timeout = 60 * time.Second
+	}
+
 	return &OpenAIClient{
-		apiKey: apiKey,
-		model:  model,
+		apiKey:  apiKey,
+		model:   model,
+		baseURL: baseURL,
 		httpClient: &http.Client{
-			Timeout: 60 * time.Second,
+			Timeout: timeout,
 		},
 	}, nil
 }
@@ -64,7 +85,7 @@ func (c *OpenAIClient) Generate(ctx context.Context, prompt string) (string, err
 	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
-		"https://api.openai.com/v1/responses",
+		c.baseURL+"/responses",
 		bytes.NewReader(bodyBytes),
 	)
 	if err != nil {

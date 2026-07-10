@@ -1,23 +1,27 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"agent-demo/internal/config"
 	"agent-demo/internal/llm"
 )
 
-func TestNewLLMClientFromEnv(t *testing.T) {
+func TestNewLLMClientFromConfig(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "openai-key")
 	t.Setenv("GEMINI_API_KEY", "gemini-key")
 
 	t.Run("mock", func(t *testing.T) {
-		t.Setenv("LLM_MODE", "mock")
+		cfg := &config.Config{}
+		cfg.ApplyDefaults()
+		cfg.LLM.Mode = "mock"
 
-		client, mode, err := newLLMClientFromEnv()
+		client, mode, err := newLLMClientFromConfig(cfg)
 		if err != nil {
-			t.Fatalf("newLLMClientFromEnv failed: %v", err)
+			t.Fatalf("newLLMClientFromConfig failed: %v", err)
 		}
 		if mode != "mock" {
 			t.Fatalf("expected mock mode, got %q", mode)
@@ -28,11 +32,13 @@ func TestNewLLMClientFromEnv(t *testing.T) {
 	})
 
 	t.Run("openai default", func(t *testing.T) {
-		t.Setenv("LLM_MODE", "")
+		cfg := &config.Config{}
+		cfg.ApplyDefaults()
+		cfg.LLM.Mode = "openai"
 
-		client, mode, err := newLLMClientFromEnv()
+		client, mode, err := newLLMClientFromConfig(cfg)
 		if err != nil {
-			t.Fatalf("newLLMClientFromEnv failed: %v", err)
+			t.Fatalf("newLLMClientFromConfig failed: %v", err)
 		}
 		if mode != "openai" {
 			t.Fatalf("expected openai mode, got %q", mode)
@@ -43,11 +49,13 @@ func TestNewLLMClientFromEnv(t *testing.T) {
 	})
 
 	t.Run("gemini", func(t *testing.T) {
-		t.Setenv("LLM_MODE", "gemini")
+		cfg := &config.Config{}
+		cfg.ApplyDefaults()
+		cfg.LLM.Mode = "gemini"
 
-		client, mode, err := newLLMClientFromEnv()
+		client, mode, err := newLLMClientFromConfig(cfg)
 		if err != nil {
-			t.Fatalf("newLLMClientFromEnv failed: %v", err)
+			t.Fatalf("newLLMClientFromConfig failed: %v", err)
 		}
 		if mode != "gemini" {
 			t.Fatalf("expected gemini mode, got %q", mode)
@@ -58,13 +66,31 @@ func TestNewLLMClientFromEnv(t *testing.T) {
 	})
 
 	t.Run("unknown", func(t *testing.T) {
-		t.Setenv("LLM_MODE", "other")
+		cfg := &config.Config{}
+		cfg.ApplyDefaults()
+		cfg.LLM.Mode = "other"
 
-		_, _, err := newLLMClientFromEnv()
+		_, _, err := newLLMClientFromConfig(cfg)
 		if err == nil {
 			t.Fatal("expected error for unsupported mode")
 		}
 	})
+}
+
+func TestLoadConfigUsesConfigPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "local.yaml")
+	if err := os.WriteFile(path, []byte("server:\n  addr: \":9090\"\n"), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	t.Setenv("CONFIG_PATH", path)
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if cfg.Server.Addr != ":9090" {
+		t.Fatalf("expected configured addr, got %q", cfg.Server.Addr)
+	}
 }
 
 func TestNewRetrieverFromDefaultKnowledge(t *testing.T) {

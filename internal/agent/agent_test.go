@@ -98,6 +98,25 @@ func TestChatUsesKnowledgeAddedAfterAgentCreation(t *testing.T) {
 	}
 }
 
+func TestChatUsesConfiguredTopK(t *testing.T) {
+	unifiedRetriever := retriever.NewUnifiedRetriever()
+	unifiedRetriever.StoreFileChunks("file-1", []document.Chunk{
+		{ID: "uploads/file-1.txt-1", Source: "uploads/file-1.txt", Content: "AlphaProject first match", Position: 1},
+		{ID: "uploads/file-1.txt-2", Source: "uploads/file-1.txt", Content: "AlphaProject second match", Position: 2},
+	})
+	agent := NewAgentWithOptions(llm.NewMockClient(), unifiedRetriever, Options{TopK: 1})
+
+	_, _, _, sources, err := agent.Chat(context.Background(), model.ChatRequest{
+		Question: "AlphaProject",
+	})
+	if err != nil {
+		t.Fatalf("chat failed: %v", err)
+	}
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source from configured topK, got %d", len(sources))
+	}
+}
+
 func testAgent(unifiedRetriever *retriever.UnifiedRetriever) *Agent {
 	return &Agent{
 		llmClient:         llm.NewMockClient(),
@@ -106,6 +125,7 @@ func testAgent(unifiedRetriever *retriever.UnifiedRetriever) *Agent {
 		retriever:         unifiedRetriever,
 		sessionStore:      session.NewMemoryStore(30),
 		maxHistoryMessage: 8,
+		topK:              3,
 	}
 }
 

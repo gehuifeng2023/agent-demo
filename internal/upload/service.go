@@ -24,7 +24,7 @@ func (s *Service) Save(file multipart.File, header *multipart.FileHeader) (id, p
 	if maxSize <= 0 {
 		maxSize = 20 << 20
 	}
-	if header.Size > s.MaxSize {
+	if header.Size > maxSize {
 		return "", "", fmt.Errorf("file too large")
 	}
 

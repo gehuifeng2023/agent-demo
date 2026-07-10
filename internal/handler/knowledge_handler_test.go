@@ -68,6 +68,30 @@ func TestKnowledgeHandlerRecallReturnsQuestionMatches(t *testing.T) {
 	}
 }
 
+func TestKnowledgeHandlerRecallUsesConfiguredDefaultTopK(t *testing.T) {
+	unifiedRetriever := retriever.NewUnifiedRetriever()
+	unifiedRetriever.StoreFileChunks("file-1", []document.Chunk{
+		{ID: "file-1", Source: "uploads/file.txt", Content: "GammaProject first", Position: 1},
+		{ID: "file-2", Source: "uploads/file.txt", Content: "GammaProject second", Position: 2},
+	})
+	handler := NewKnowledgeHandlerWithTopK(unifiedRetriever, 1)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/knowledge/retrieve", strings.NewReader(`{"question":"GammaProject"}`))
+	rr := httptest.NewRecorder()
+
+	handler.Recall(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var resp model.KnowledgeRecallResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Chunks) != 1 {
+		t.Fatalf("expected 1 chunk from configured topK, got %d", len(resp.Chunks))
+	}
+}
+
 func TestKnowledgeHandlerRecallRequiresQuestion(t *testing.T) {
 	handler := NewKnowledgeHandler(testKnowledgeRetriever())
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/knowledge/retrieve", strings.NewReader(`{"question":" "}`))

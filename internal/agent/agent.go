@@ -24,11 +24,31 @@ type Agent struct {
 	retriever         *retriever.UnifiedRetriever
 	sessionStore      session.Store
 	maxHistoryMessage int
+	topK              int
+}
+
+type Options struct {
+	TopK               int
+	SessionMaxMessages int
+	MaxHistoryMessage  int
 }
 
 func NewAgent(llmClient llm.Client, unifiedRetriever *retriever.UnifiedRetriever) *Agent {
+	return NewAgentWithOptions(llmClient, unifiedRetriever, Options{})
+}
+
+func NewAgentWithOptions(llmClient llm.Client, unifiedRetriever *retriever.UnifiedRetriever, options Options) *Agent {
 	if unifiedRetriever == nil {
 		unifiedRetriever = retriever.NewUnifiedRetriever()
+	}
+	if options.TopK <= 0 {
+		options.TopK = 3
+	}
+	if options.SessionMaxMessages <= 0 {
+		options.SessionMaxMessages = 30
+	}
+	if options.MaxHistoryMessage <= 0 {
+		options.MaxHistoryMessage = 8
 	}
 
 	return &Agent{
@@ -36,8 +56,9 @@ func NewAgent(llmClient llm.Client, unifiedRetriever *retriever.UnifiedRetriever
 		promptFactory:     prompt.NewFactory(),
 		classifier:        intent.NewClassifier(),
 		retriever:         unifiedRetriever,
-		sessionStore:      session.NewMemoryStore(30),
-		maxHistoryMessage: 8,
+		sessionStore:      session.NewMemoryStore(options.SessionMaxMessages),
+		maxHistoryMessage: options.MaxHistoryMessage,
+		topK:              options.TopK,
 	}
 }
 
@@ -65,7 +86,7 @@ func (a *Agent) Chat(ctx context.Context, req model.ChatRequest) (string, string
 		return "", "", sessionID, nil, fmt.Errorf("resolve intent: %w", err)
 	}
 
-	chunks := a.retriever.Retrieve(question, compactStrings(req.KnowledgeBaseIDs), compactStrings(req.FileIDs), 3)
+	chunks := a.retriever.Retrieve(question, compactStrings(req.KnowledgeBaseIDs), compactStrings(req.FileIDs), a.topK)
 
 	promptText, err := a.buildPrompt(intentType, question, history, chunks)
 	if err != nil {

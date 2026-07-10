@@ -18,6 +18,7 @@ const (
 	DefaultKnowledgeRootDir   = "knowledge_attachment/default/"
 	DefaultSessionMaxMessages = 30
 	DefaultSessionRecentLimit = 8
+	DefaultToolEnabled        = true
 )
 
 type Config struct {
@@ -27,6 +28,7 @@ type Config struct {
 	Upload    UploadConfig    `yaml:"upload"`
 	Knowledge KnowledgeConfig `yaml:"knowledge"`
 	Session   SessionConfig   `yaml:"session"`
+	Tool      ToolConfig      `yaml:"tool"`
 }
 
 type ServerConfig struct {
@@ -53,6 +55,10 @@ type KnowledgeConfig struct {
 type SessionConfig struct {
 	MaxMessages int `yaml:"max_messages"`
 	RecentLimit int `yaml:"recent_limit"`
+}
+type ToolConfig struct {
+	Enabled *bool  `yaml:"enabled"`
+	RootDir string `yaml:"root_dir"`
 }
 
 func Load(path string) (*Config, error) {
@@ -104,4 +110,18 @@ func (c Config) UploadMaxBytes() int64 {
 
 func (c Config) LLMTimeout() time.Duration {
 	return time.Duration(c.LLM.TimeoutSeconds) * time.Second
+}
+
+func (c Config) ToolEnabled() bool {
+	if c.Tool.Enabled == nil {
+		return DefaultToolEnabled
+	}
+	return *c.Tool.Enabled
+}
+
+func (c Config) ToolRootDir() string {
+	if c.Tool.RootDir != "" {
+		return c.Tool.RootDir
+	}
+	return c.Knowledge.RootDir
 }

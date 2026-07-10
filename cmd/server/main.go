@@ -14,6 +14,7 @@ import (
 	"agent-demo/internal/knowledge"
 	"agent-demo/internal/llm"
 	"agent-demo/internal/retriever"
+	"agent-demo/internal/tool"
 )
 
 func main() {
@@ -36,6 +37,8 @@ func main() {
 		TopK:               cfg.RAG.TopK,
 		SessionMaxMessages: cfg.Session.MaxMessages,
 		MaxHistoryMessage:  cfg.Session.RecentLimit,
+		ToolRegistry:       newToolRegistry(cfg),
+		ToolsEnabled:       cfg.ToolEnabled(),
 	})
 
 	chatHandler := handler.NewChatHandler(agentCore)
@@ -75,6 +78,16 @@ func newRetrieverFromDefaultKnowledge(dir string) (*retriever.UnifiedRetriever, 
 		Chunks: document.SplitByParagraph(docs),
 	})
 	return unifiedRetriever, nil
+}
+
+func newToolRegistry(cfg *config.Config) *tool.Registry {
+	if cfg == nil || !cfg.ToolEnabled() {
+		return nil
+	}
+
+	registry := tool.NewRegistry()
+	registry.Register(tool.FileReaderTool{RootDir: cfg.ToolRootDir()})
+	return registry
 }
 
 func newLLMClientFromConfig(cfg *config.Config) (llm.Client, string, error) {

@@ -28,6 +28,9 @@ knowledge:
 session:
   max_messages: 12
   recent_limit: 4
+tool:
+  enabled: false
+  root_dir: tool-root
 `)
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -62,6 +65,12 @@ session:
 	if cfg.Session.MaxMessages != 12 || cfg.Session.RecentLimit != 4 {
 		t.Fatalf("unexpected session config: %#v", cfg.Session)
 	}
+	if cfg.ToolEnabled() {
+		t.Fatal("expected tool to be disabled")
+	}
+	if cfg.ToolRootDir() != "tool-root" {
+		t.Fatalf("expected tool root, got %q", cfg.ToolRootDir())
+	}
 }
 
 func TestApplyDefaultsUsesCurrentHardCodedValues(t *testing.T) {
@@ -89,5 +98,11 @@ func TestApplyDefaultsUsesCurrentHardCodedValues(t *testing.T) {
 	}
 	if cfg.Session.MaxMessages != DefaultSessionMaxMessages || cfg.Session.RecentLimit != DefaultSessionRecentLimit {
 		t.Fatalf("unexpected default session config: %#v", cfg.Session)
+	}
+	if cfg.ToolEnabled() != DefaultToolEnabled {
+		t.Fatalf("expected default tool enabled %v, got %v", DefaultToolEnabled, cfg.ToolEnabled())
+	}
+	if cfg.ToolRootDir() != DefaultKnowledgeRootDir {
+		t.Fatalf("expected default tool root %q, got %q", DefaultKnowledgeRootDir, cfg.ToolRootDir())
 	}
 }

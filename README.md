@@ -9,6 +9,7 @@
 - Chat API 每次请求都会从共享召回器读取最新知识库内容。
 - Knowledge API 支持查看全部 chunks，也支持只根据问题做知识库召回。
 - LLM 支持 `mock`、`openai`、`gemini` 三种模式。
+- Chat API 支持自动调用 `file_reader` 工具读取安全目录内的 `.md`/`.txt` 文件。
 - 运行参数从 `configs/local.yaml` 读取，也可以通过 `CONFIG_PATH` 指定其他配置文件。
 
 ## 技术栈
@@ -32,6 +33,7 @@ agent-demo/
 ├── internal/llm/               # Mock/OpenAI/Gemini LLM client
 ├── internal/retriever/         # 统一召回器和关键词召回
 ├── internal/session/           # 内存会话存储
+├── internal/tool/              # Agent 工具：注册、路由、文件读取
 ├── internal/upload/            # 上传文件保存和上传文件知识库
 ├── knowledge_attachment/
 │   ├── default/                # 启动加载的默认知识库
@@ -83,6 +85,10 @@ session:
   max_messages: 30
   recent_limit: 8
 
+tool:
+  enabled: true
+  root_dir: knowledge_attachment/default/
+
 intent:
   mode: rule
 ```
@@ -101,6 +107,8 @@ intent:
 - `rag.top_k`：聊天和知识库召回默认返回 chunk 数。
 - `session.max_messages`：每个 session 最多保存的消息数。
 - `session.recent_limit`：构建 Prompt 时读取的最近消息数。
+- `tool.enabled`：是否启用工具自动调用。默认启用。
+- `tool.root_dir`：`file_reader` 允许读取的安全根目录。为空时使用 `knowledge.root_dir`。
 
 ## 快速开始
 
@@ -208,6 +216,26 @@ Content-Type: application/json
   ]
 }
 ```
+
+### 工具调用
+
+`/api/v1/chat` 会根据问题自动路由工具。当前内置工具：
+
+- `file_reader`：读取 `tool.root_dir` 下的 `.md`/`.txt` 文件内容，并把结果作为工具上下文交给 LLM。
+
+请求示例：
+
+```bash
+curl -X POST http://localhost:8080/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question":"请读取 faq.md 并总结重点"}'
+```
+
+说明：
+
+- `faq.md` 会按相对路径解析到 `tool.root_dir/faq.md`。
+- 绝对路径、`../` 越权路径和目录路径会被拒绝。
+- 工具结果只作为回答上下文，不会写入响应里的 `sources`；`sources` 仍表示 RAG 召回来源。
 
 ### 上传文件扩充知识库
 

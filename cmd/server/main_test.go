@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -107,5 +108,39 @@ func TestNewRetrieverFromDefaultKnowledge(t *testing.T) {
 	}
 	if !strings.Contains(chunks[0].Source, "faq.md") {
 		t.Fatalf("expected faq source, got %q", chunks[0].Source)
+	}
+}
+
+func TestNewToolRegistry(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "faq.md"), []byte("tool config content"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	cfg := &config.Config{}
+	cfg.ApplyDefaults()
+	cfg.Tool.RootDir = root
+
+	registry := newToolRegistry(cfg)
+	if registry == nil {
+		t.Fatal("expected registry")
+	}
+
+	fileReader, ok := registry.Get("file_reader")
+	if !ok {
+		t.Fatal("expected file_reader")
+	}
+	got, err := fileReader.Execute(context.Background(), "faq.md")
+	if err != nil {
+		t.Fatalf("execute file_reader: %v", err)
+	}
+	if got != "tool config content" {
+		t.Fatalf("unexpected content %q", got)
+	}
+
+	disabled := false
+	cfg.Tool.Enabled = &disabled
+	if registry := newToolRegistry(cfg); registry != nil {
+		t.Fatal("expected nil registry when tool is disabled")
 	}
 }

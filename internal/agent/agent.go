@@ -15,6 +15,7 @@ import (
 	"agent-demo/internal/prompt"
 	"agent-demo/internal/retriever"
 	"agent-demo/internal/session"
+	"agent-demo/internal/tool"
 )
 
 type Agent struct {
@@ -25,12 +26,16 @@ type Agent struct {
 	sessionStore      session.Store
 	maxHistoryMessage int
 	topK              int
+	toolRegistry      *tool.Registry
+	toolsEnabled      bool
 }
 
 type Options struct {
 	TopK               int
 	SessionMaxMessages int
 	MaxHistoryMessage  int
+	ToolRegistry       *tool.Registry
+	ToolsEnabled       bool
 }
 
 func NewAgent(llmClient llm.Client, unifiedRetriever *retriever.UnifiedRetriever) *Agent {
@@ -59,6 +64,8 @@ func NewAgentWithOptions(llmClient llm.Client, unifiedRetriever *retriever.Unifi
 		sessionStore:      session.NewMemoryStore(options.SessionMaxMessages),
 		maxHistoryMessage: options.MaxHistoryMessage,
 		topK:              options.TopK,
+		toolRegistry:      options.ToolRegistry,
+		toolsEnabled:      options.ToolsEnabled,
 	}
 }
 
@@ -87,8 +94,12 @@ func (a *Agent) Chat(ctx context.Context, req model.ChatRequest) (string, string
 	}
 
 	chunks := a.retriever.Retrieve(question, compactStrings(req.KnowledgeBaseIDs), compactStrings(req.FileIDs), a.topK)
+	toolContext, err := a.executeToolIfNeeded(ctx, question)
+	if err != nil {
+		return "", "", sessionID, buildSources(chunks), err
+	}
 
-	promptText, err := a.buildPrompt(intentType, question, history, chunks)
+	promptText, err := a.buildPrompt(intentType, question, history, chunks, toolContext)
 	if err != nil {
 		return "", "", sessionID, buildSources(chunks), fmt.Errorf("build prompt: %w", err)
 	}
@@ -129,22 +140,66 @@ func compactStrings(values []string) []string {
 	return result
 }
 
-func (a *Agent) buildPrompt(intentType prompt.Type, question string, history []session.Message, chunks []document.Chunk) (string, error) {
+func (a *Agent) buildPrompt(intentType prompt.Type, question string, history []session.Message, chunks []document.Chunk, toolContext string) (string, error) {
+	questionWithTools := withToolContext(question, toolContext)
+
 	if intentType == prompt.TypeChat {
 		if len(chunks) > 0 {
-			return prompt.BuildRAGPrompt(question, chunks, history), nil
+			return prompt.BuildRAGPrompt(questionWithTools, chunks, history), nil
 		}
 		if looksLikeDocumentQuestion(question) {
-			return prompt.BuildRAGPrompt(question, nil, history), nil
+			return prompt.BuildRAGPrompt(questionWithTools, nil, history), nil
 		}
 
-		input := prompt.WithHistory(question, history)
+		input := prompt.WithHistory(questionWithTools, history)
 		promptText, err := a.promptFactory.Build(prompt.TypeChat, input)
 		return promptText, err
 	}
 
-	promptText, err := a.promptFactory.Build(intentType, question)
+	promptText, err := a.promptFactory.Build(intentType, questionWithTools)
 	return promptText, err
+}
+
+func (a *Agent) executeToolIfNeeded(ctx context.Context, question string) (string, error) {
+	if !a.toolsEnabled || a.toolRegistry == nil {
+		return "", nil
+	}
+
+	toolName := tool.RouteTool(question)
+	if toolName == "" {
+		return "", nil
+	}
+
+	selectedTool, ok := a.toolRegistry.Get(toolName)
+	if !ok {
+		return "", fmt.Errorf("tool not found: %s", toolName)
+	}
+
+	input := tool.ExtractFilePath(question)
+	if input == "" {
+		return "", fmt.Errorf("execute tool %s: file path is empty", toolName)
+	}
+
+	output, err := selectedTool.Execute(ctx, input)
+	if err != nil {
+		return "", fmt.Errorf("execute tool %s: %w", toolName, err)
+	}
+
+	return fmt.Sprintf("工具：%s\n输入：%s\n输出：\n%s", selectedTool.Name(), input, strings.TrimSpace(output)), nil
+}
+
+func withToolContext(question string, toolContext string) string {
+	toolContext = strings.TrimSpace(toolContext)
+	if toolContext == "" {
+		return question
+	}
+
+	return fmt.Sprintf(`%s
+
+【工具上下文】
+%s
+
+请优先依据工具上下文中的真实文件内容回答。`, question, toolContext)
 }
 
 func buildSources(chunks []document.Chunk) []model.Source {

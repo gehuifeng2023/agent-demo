@@ -2,6 +2,9 @@ package agent
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"agent-demo/internal/document"
@@ -12,6 +15,7 @@ import (
 	"agent-demo/internal/prompt"
 	"agent-demo/internal/retriever"
 	"agent-demo/internal/session"
+	"agent-demo/internal/tool"
 )
 
 func TestChatReturnsSourcesForRAGQuestion(t *testing.T) {
@@ -117,6 +121,68 @@ func TestChatUsesConfiguredTopK(t *testing.T) {
 	}
 }
 
+func TestChatInjectsToolContext(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "faq.md"), []byte("FileReaderTool content"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	registry := tool.NewRegistry()
+	registry.Register(tool.FileReaderTool{RootDir: root})
+	agent := NewAgentWithOptions(llm.NewMockClient(), retriever.NewUnifiedRetriever(), Options{
+		ToolRegistry: registry,
+		ToolsEnabled: true,
+	})
+
+	answer, _, _, sources, err := agent.Chat(context.Background(), model.ChatRequest{
+		Question: "请读取 faq.md 并总结",
+	})
+	if err != nil {
+		t.Fatalf("chat failed: %v", err)
+	}
+	if !strings.Contains(answer, "FileReaderTool content") {
+		t.Fatalf("expected tool content in answer prompt, got %q", answer)
+	}
+	if len(sources) != 0 {
+		t.Fatalf("expected no RAG sources, got %d", len(sources))
+	}
+}
+
+func TestChatDoesNotTriggerToolForNormalQuestion(t *testing.T) {
+	registry := tool.NewRegistry()
+	registry.Register(failingTool{})
+	agent := NewAgentWithOptions(llm.NewMockClient(), retriever.NewUnifiedRetriever(), Options{
+		ToolRegistry: registry,
+		ToolsEnabled: true,
+	})
+
+	_, _, _, _, err := agent.Chat(context.Background(), model.ChatRequest{
+		Question: "什么是 RAG？",
+	})
+	if err != nil {
+		t.Fatalf("chat failed: %v", err)
+	}
+}
+
+func TestChatReturnsToolError(t *testing.T) {
+	registry := tool.NewRegistry()
+	registry.Register(tool.FileReaderTool{RootDir: t.TempDir()})
+	agent := NewAgentWithOptions(llm.NewMockClient(), retriever.NewUnifiedRetriever(), Options{
+		ToolRegistry: registry,
+		ToolsEnabled: true,
+	})
+
+	_, _, _, _, err := agent.Chat(context.Background(), model.ChatRequest{
+		Question: "请读取 missing.md",
+	})
+	if err == nil {
+		t.Fatal("expected tool error")
+	}
+	if !strings.Contains(err.Error(), "execute tool file_reader") {
+		t.Fatalf("expected tool error context, got %v", err)
+	}
+}
+
 func testAgent(unifiedRetriever *retriever.UnifiedRetriever) *Agent {
 	return &Agent{
 		llmClient:         llm.NewMockClient(),
@@ -143,4 +209,14 @@ func testUnifiedRetriever() *retriever.UnifiedRetriever {
 		},
 	})
 	return unifiedRetriever
+}
+
+type failingTool struct{}
+
+func (failingTool) Name() string { return "file_reader" }
+
+func (failingTool) Description() string { return "failing tool" }
+
+func (failingTool) Execute(context.Context, string) (string, error) {
+	return "", os.ErrInvalid
 }

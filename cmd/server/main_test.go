@@ -14,6 +14,7 @@ import (
 func TestNewLLMClientFromConfig(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "openai-key")
 	t.Setenv("GEMINI_API_KEY", "gemini-key")
+	t.Setenv("DEEPSEEK_API_KEY", "deepseek-key")
 
 	t.Run("mock", func(t *testing.T) {
 		cfg := &config.Config{}
@@ -63,6 +64,23 @@ func TestNewLLMClientFromConfig(t *testing.T) {
 		}
 		if _, ok := client.(*llm.GeminiClient); !ok {
 			t.Fatalf("expected *llm.GeminiClient, got %T", client)
+		}
+	})
+
+	t.Run("deepseek", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.ApplyDefaults()
+		cfg.LLM.Mode = "deepseek"
+
+		client, mode, err := newLLMClientFromConfig(cfg)
+		if err != nil {
+			t.Fatalf("newLLMClientFromConfig failed: %v", err)
+		}
+		if mode != "deepseek" {
+			t.Fatalf("expected deepseek mode, got %q", mode)
+		}
+		if _, ok := client.(*llm.DeepSeekClient); !ok {
+			t.Fatalf("expected *llm.DeepSeekClient, got %T", client)
 		}
 	})
 

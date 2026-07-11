@@ -41,6 +41,14 @@ type Options struct {
 	WorkflowRegistry   *workflow.Registry
 }
 
+type StreamResult struct {
+	Chunks    <-chan string
+	Errors    <-chan error
+	SessionID string
+	Type      string
+	Sources   []model.Source
+}
+
 func NewAgent(llmClient llm.Client, unifiedRetriever *retriever.UnifiedRetriever) *Agent {
 	return NewAgentWithOptions(llmClient, unifiedRetriever, Options{})
 }
@@ -70,6 +78,107 @@ func NewAgentWithOptions(llmClient llm.Client, unifiedRetriever *retriever.Unifi
 		toolRegistry:      options.ToolRegistry,
 		toolsEnabled:      options.ToolsEnabled,
 		workflowRegistry:  options.WorkflowRegistry,
+	}
+}
+
+func (a *Agent) Stream(ctx context.Context, req model.ChatRequest) (StreamResult, error) {
+	sessionID := req.SessionID
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		sessionID = newSessionID()
+	}
+
+	question := req.Question
+	question = strings.TrimSpace(question)
+	if question == "" {
+		return StreamResult{SessionID: sessionID}, fmt.Errorf("question is empty")
+	}
+
+	history, err := a.sessionStore.Recent(ctx, sessionID, a.maxHistoryMessage)
+	if err != nil {
+		return StreamResult{SessionID: sessionID}, fmt.Errorf("load session history: %w", err)
+	}
+	log.Printf("history: %#v", history)
+
+	intentType, err := a.resolveIntent(ctx, question, req.Type)
+	if err != nil {
+		return StreamResult{SessionID: sessionID}, fmt.Errorf("resolve intent: %w", err)
+	}
+
+	chunks := a.retriever.Retrieve(question, compactStrings(req.KnowledgeBaseIDs), compactStrings(req.FileIDs), a.topK)
+	toolContext, err := a.executeWorkflowOrTool(ctx, sessionID, question, req.WorkflowID)
+	if err != nil {
+		return StreamResult{SessionID: sessionID, Sources: buildSources(chunks)}, err
+	}
+
+	promptText, err := a.buildPrompt(intentType, question, history, chunks, toolContext)
+	if err != nil {
+		return StreamResult{SessionID: sessionID, Type: string(intentType), Sources: buildSources(chunks)}, fmt.Errorf("build prompt: %w", err)
+	}
+	streamClient, ok := a.llmClient.(llm.StreamClient)
+	if !ok {
+		return StreamResult{SessionID: sessionID, Type: string(intentType), Sources: buildSources(chunks)}, fmt.Errorf("LLM client %T does not support streaming", a.llmClient)
+	}
+	answerCh, errCh := streamClient.Stream(ctx, promptText)
+	outputCh := make(chan string)
+	outputErrCh := make(chan error, 1)
+	sources := buildSources(chunks)
+
+	go a.forwardStream(ctx, sessionID, question, answerCh, errCh, outputCh, outputErrCh)
+
+	return StreamResult{
+		Chunks:    outputCh,
+		Errors:    outputErrCh,
+		SessionID: sessionID,
+		Type:      string(intentType),
+		Sources:   sources,
+	}, nil
+}
+
+func (a *Agent) forwardStream(ctx context.Context, sessionID, question string, answerCh <-chan string, errCh <-chan error, outputCh chan<- string, outputErrCh chan<- error) {
+	defer close(outputCh)
+	defer close(outputErrCh)
+
+	var answerBuilder strings.Builder
+	var streamErr error
+	for answerCh != nil || errCh != nil {
+		select {
+		case answer, ok := <-answerCh:
+			if !ok {
+				answerCh = nil
+				continue
+			}
+			if streamErr == nil {
+				answerBuilder.WriteString(answer)
+				select {
+				case outputCh <- answer:
+				case <-ctx.Done():
+					streamErr = ctx.Err()
+				}
+			}
+		case err, ok := <-errCh:
+			if !ok {
+				errCh = nil
+				continue
+			}
+			if err != nil && streamErr == nil {
+				streamErr = fmt.Errorf("generate answer: %w", err)
+			}
+		}
+	}
+
+	if streamErr != nil {
+		outputErrCh <- streamErr
+		return
+	}
+	if err := a.sessionStore.Append(
+		ctx,
+		sessionID,
+		session.Message{Role: session.RoleUser, Content: question, CreatedAt: time.Now()},
+		session.Message{Role: session.RoleAssistant, Content: answerBuilder.String(), CreatedAt: time.Now()},
+	); err != nil {
+		log.Printf("save session history: %v", err)
+		outputErrCh <- fmt.Errorf("save session history: %w", err)
 	}
 }
 

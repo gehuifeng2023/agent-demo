@@ -8,7 +8,7 @@
 - 支持上传 `.md`、`.txt`、`.docx`、`.doc` 文件，上传内容会切分为 chunks 并写入共享召回器。
 - Chat API 每次请求都会从共享召回器读取最新知识库内容。
 - Knowledge API 支持查看全部 chunks，也支持只根据问题做知识库召回。
-- LLM 支持 `mock`、`openai`、`gemini` 三种模式。
+- LLM 支持 `mock`、`openai`、`gemini`、`deepseek` 四种模式。
 - Chat API 支持自动调用 `file_reader` 读取安全目录内的 `.md`/`.txt` 文件，也支持调用 `log_analyzer` 分析常见服务日志。
 - 运行参数从 `configs/local.yaml` 读取，也可以通过 `CONFIG_PATH` 指定其他配置文件。
 
@@ -30,7 +30,7 @@ agent-demo/
 ├── internal/document/          # 文档加载和 chunk 切分
 ├── internal/handler/           # HTTP handler
 ├── internal/knowledge/         # 默认知识库注册表
-├── internal/llm/               # Mock/OpenAI/Gemini LLM client
+├── internal/llm/               # Mock/OpenAI/Gemini/DeepSeek LLM client
 ├── internal/retriever/         # 统一召回器和关键词召回
 ├── internal/session/           # 内存会话存储
 ├── internal/tool/              # Agent 工具：注册、路由、文件读取、日志分析
@@ -111,11 +111,28 @@ intent:
 关键字段说明：
 
 - `server.addr`：HTTP 服务监听地址。
-- `llm.mode`：`mock`、`openai` 或 `gemini`。
-- `llm.api_key`：LLM API key。为空时 OpenAI/Gemini 会 fallback 到 `OPENAI_API_KEY` / `GEMINI_API_KEY`。
+- `llm.mode`：`mock`、`openai`、`gemini` 或 `deepseek`。
+- `llm.api_key`：LLM API key。为空时会 fallback 到对应环境变量：`OPENAI_API_KEY`、`GEMINI_API_KEY` 或 `DEEPSEEK_API_KEY`。
 - `llm.model`：LLM 模型名。为空时会 fallback 到 `LLM_MODEL` 或 client 默认模型。
 - `llm.base_url`：LLM base URL。为空时使用 client 默认地址。
 - `llm.timeout_seconds`：LLM 请求超时时间。
+
+DeepSeek 配置示例：
+
+```yaml
+llm:
+  mode: deepseek
+  api_key: ""
+  model: deepseek-chat
+  base_url: https://api.deepseek.com
+  timeout_seconds: 60
+```
+
+也可以通过环境变量配置：
+
+```bash
+DEEPSEEK_API_KEY=your-key go run ./cmd/server
+```
 - `knowledge.root_dir`：启动时加载的默认知识库目录。
 - `upload.dir`：上传文件保存根目录。
 - `upload.max_size_mb`：上传文件大小限制。
@@ -237,6 +254,16 @@ Content-Type: application/json
   ]
 }
 ```
+
+### 流式聊天
+
+```http
+POST /api/v1/chat/stream
+Content-Type: application/json
+Accept: text/event-stream
+```
+
+接口返回 SSE：首先发送 `event: meta` 会话元数据，随后发送多个 `data` 文本增量，成功结束时发送 `data: [DONE]`；模型调用失败时发送 `event: error`。
 
 ### 工具调用
 

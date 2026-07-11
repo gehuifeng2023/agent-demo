@@ -54,6 +54,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/api/v1/chat", chatHandler)
+	mux.Handle("/api/v1/chat/stream", handler.NewStreamHandler(agentCore))
 	mux.HandleFunc("/api/v1/files/upload", fileHandler.Upload)
 	mux.HandleFunc("/api/v1/knowledge", knowledgeHandler.List)
 	mux.HandleFunc("/api/v1/knowledge/retrieve", knowledgeHandler.Recall)
@@ -160,6 +161,14 @@ func newLLMClientFromConfig(cfg *config.Config) (llm.Client, string, error) {
 			return nil, "gemini", err
 		}
 		return client, "gemini", nil
+	case "deepseek":
+		apiKey := firstNonEmpty(cfg.LLM.APIKey, os.Getenv("DEEPSEEK_API_KEY"))
+		model := firstNonEmpty(cfg.LLM.Model, os.Getenv("LLM_MODEL"))
+		client, err := llm.NewDeepSeekClientWithConfig(apiKey, model, cfg.LLM.BaseURL, cfg.LLMTimeout())
+		if err != nil {
+			return nil, "deepseek", err
+		}
+		return client, "deepseek", nil
 	default:
 		return nil, "", fmt.Errorf("unsupported LLM_MODE: %s", mode)
 	}

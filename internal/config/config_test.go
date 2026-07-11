@@ -33,6 +33,14 @@ tool:
   root_dir: tool-root
   http_allowed_hosts: [api.example.com]
   http_timeout_seconds: 12
+workflow:
+  definitions:
+    - id: service_check
+      nodes:
+        - name: health
+          tool: http_get
+          input: '{{question}}'
+          output_key: health
 `)
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -78,6 +86,13 @@ tool:
 	}
 	if cfg.HTTPToolTimeout() != 12*time.Second {
 		t.Fatalf("expected HTTP timeout 12s, got %s", cfg.HTTPToolTimeout())
+	}
+	if len(cfg.Workflow.Definitions) != 1 || cfg.Workflow.Definitions[0].ID != "service_check" {
+		t.Fatalf("unexpected workflow definitions %#v", cfg.Workflow.Definitions)
+	}
+	node := cfg.Workflow.Definitions[0].Nodes[0]
+	if node.Name != "health" || node.Tool != "http_get" || node.Input != "{{question}}" || node.OutputKey != "health" {
+		t.Fatalf("unexpected workflow node %#v", node)
 	}
 }
 

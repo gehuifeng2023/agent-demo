@@ -1,152 +1,229 @@
-# Development Guidelines
+# 开发指南
 
-## Philosophy
+## 开发理念
 
-### Core Beliefs
+### 核心原则
 
-- **Incremental progress over big bangs** - Small changes that compile and pass tests
-- **Learning from existing code** - Study and plan before implementing
-- **Pragmatic over dogmatic** - Adapt to project reality
-- **Clear intent over clever code** - Be boring and obvious
+-   **渐进式推进，而不是一次性大改**——每次只进行小范围修改，并确保代码可以编译且测试通过
 
-### Simplicity Means
+-   **从现有代码中学习**——实现之前，先研究现有代码并制定计划
 
-- Single responsibility per function/class
-- Avoid premature abstractions
-- No clever tricks - choose the boring solution
-- If you need to explain it, it's too complex
+-   **务实优于教条**——根据项目实际情况灵活调整
 
-## Process
+-   **明确意图优于炫技代码**——代码应朴素、直观、易于理解
 
-### 1. Planning & Staging
 
-Break complex work into 3-5 stages. Document in `IMPLEMENTATION_PLAN.md`:
+### 简单意味着
+
+-   每个函数或类只承担单一职责
+
+-   避免过早进行抽象
+
+-   不使用炫技技巧，优先选择朴素直接的解决方案
+
+-   如果一个实现需要大量解释，说明它可能过于复杂
+
+
+## 开发流程
+
+### 1\. 规划与阶段划分
+
+将复杂工作拆分为 3～5 个阶段，并记录在 `IMPLEMENTATION_PLAN.md` 文件中：
 
 ```markdown
-## Stage N: [Name]
-**Goal**: [Specific deliverable]
-**Success Criteria**: [Testable outcomes]
-**Tests**: [Specific test cases]
-**Status**: [Not Started|In Progress|Complete]
+## 阶段 N：[名称]
+**目标**：[具体交付成果]
+**成功标准**：[可测试、可验证的结果]
+**测试**：[具体测试用例]
+**状态**：[未开始|进行中|已完成]
 ```
-- Update status as you progress
-- Remove file when all stages are done
 
-### 2. Implementation Flow
+-   随着工作推进及时更新状态
 
-1. **Understand** - Study existing patterns in codebase
-2. **Test** - Write test first (red)
-3. **Implement** - Minimal code to pass (green)
-4. **Refactor** - Clean up with tests passing
-5. **Commit** - With clear message linking to plan
+-   所有阶段完成后，删除该文件
 
-### 3. When Stuck (After 3 Attempts)
 
-**CRITICAL**: Maximum 3 attempts per issue, then STOP.
+### 2\. 实现流程
 
-1. **Document what failed**:
-    - What you tried
-    - Specific error messages
-    - Why you think it failed
+1.  **理解**——研究代码库中已有的实现模式
 
-2. **Research alternatives**:
-    - Find 2-3 similar implementations
-    - Note different approaches used
+2.  **测试**——先编写测试，让测试处于失败状态（红灯）
 
-3. **Question fundamentals**:
-    - Is this the right abstraction level?
-    - Can this be split into smaller problems?
-    - Is there a simpler approach entirely?
+3.  **实现**——编写能够使测试通过的最少代码（绿灯）
 
-4. **Try different angle**:
-    - Different library/framework feature?
-    - Different architectural pattern?
-    - Remove abstraction instead of adding?
+4.  **重构**——在测试持续通过的前提下清理和优化代码
 
-## Technical Standards
+5.  **提交**——使用清晰的提交信息，并说明其与实施计划的关联
 
-### Architecture Principles
 
-- **Composition over inheritance** - Use dependency injection
-- **Interfaces over singletons** - Enable testing and flexibility
-- **Explicit over implicit** - Clear data flow and dependencies
-- **Test-driven when possible** - Never disable tests, fix them
+### 3\. 遇到阻碍时（尝试 3 次后）
 
-### Code Quality
+**关键要求**：同一个问题最多尝试 3 次，之后必须停止并重新评估。
 
-- **Every commit must**:
-    - Compile successfully
-    - Pass all existing tests
-    - Include tests for new functionality
-    - Follow project formatting/linting
+1.  **记录失败情况**：
 
-- **Before committing**:
-    - Run formatters/linters
-    - Self-review changes
-    - Ensure commit message explains "why"
+    -   尝试过哪些方法
 
-### Error Handling
+    -   具体的错误信息
 
-- Fail fast with descriptive messages
-- Include context for debugging
-- Handle errors at appropriate level
-- Never silently swallow exceptions
+    -   认为失败的原因
 
-## Decision Framework
+2.  **研究替代方案**：
 
-When multiple valid approaches exist, choose based on:
+    -   查找 2～3 个类似实现
 
-1. **Testability** - Can I easily test this?
-2. **Readability** - Will someone understand this in 6 months?
-3. **Consistency** - Does this match project patterns?
-4. **Simplicity** - Is this the simplest solution that works?
-5. **Reversibility** - How hard to change later?
+    -   记录它们使用的不同方法
 
-## Project Integration
+3.  **重新审视基本假设**：
 
-### Learning the Codebase
+    -   当前的抽象层级是否合适？
 
-- Find 3 similar features/components
-- Identify common patterns and conventions
-- Use same libraries/utilities when possible
-- Follow existing test patterns
+    -   是否可以将问题拆分为更小的问题？
 
-### Tooling
+    -   是否存在更简单的整体方案？
 
-- Use project's existing build system
-- Use project's test framework
-- Use project's formatter/linter settings
-- Don't introduce new tools without strong justification
+4.  **换一个角度尝试**：
 
-## Quality Gates
+    -   是否可以使用其他库或框架特性？
 
-### Definition of Done
+    -   是否可以采用不同的架构模式？
 
-- [ ] Tests written and passing
-- [ ] Code follows project conventions
-- [ ] No linter/formatter warnings
-- [ ] Commit messages are clear
-- [ ] Implementation matches plan
-- [ ] No TODOs without issue numbers
+    -   是否应该删除抽象，而不是继续增加抽象？
 
-### Test Guidelines
 
-- Test behavior, not implementation
-- One assertion per test when possible
-- Clear test names describing scenario
-- Use existing test utilities/helpers
-- Tests should be deterministic
+## 技术标准
 
-## Important Reminders
+### 架构原则
 
-**NEVER**:
-- Use `--no-verify` to bypass commit hooks
-- Disable tests instead of fixing them
-- Commit code that doesn't compile
-- Make assumptions - verify with existing code
+-   **组合优于继承**——使用依赖注入
 
-**ALWAYS**:
-- Commit working code incrementally
-- Update plan documentation as you go
-- Learn from existing implementations
-- Stop after 3 failed attempts and reassess
+-   **接口优于单例**——提高可测试性和灵活性
+
+-   **显式优于隐式**——明确数据流和依赖关系
+
+-   **在条件允许时采用测试驱动开发**——绝不通过禁用测试解决问题，应修复测试或代码
+
+
+### 代码质量
+
+-   **每次提交都必须满足**：
+
+    -   编译成功
+
+    -   所有现有测试通过
+
+    -   为新增功能补充测试
+
+    -   遵循项目的格式化和代码检查规范
+
+-   **提交代码之前**：
+
+    -   运行代码格式化工具和静态检查工具
+
+    -   自行审查本次修改
+
+    -   确保提交信息说明修改的“原因”
+
+
+### 错误处理
+
+-   快速失败，并提供清晰、具有描述性的错误信息
+
+-   在错误信息中包含便于调试的上下文
+
+-   在合适的层级处理错误
+
+-   绝不能静默忽略异常
+
+
+## 决策框架
+
+当存在多个可行方案时，按照以下优先级进行选择：
+
+1.  **可测试性**——是否容易编写测试？
+
+2.  **可读性**——六个月后，其他人是否仍能理解？
+
+3.  **一致性**——是否符合项目现有的实现模式？
+
+4.  **简单性**——是否是能够解决问题的最简单方案？
+
+5.  **可逆性**——后续修改或替换的难度有多大？
+
+
+## 项目集成
+
+### 熟悉代码库
+
+-   查找 3 个类似的功能或组件
+
+-   识别项目中的通用模式和约定
+
+-   尽可能复用相同的库和工具函数
+
+-   遵循项目现有的测试模式
+
+
+### 工具使用
+
+-   使用项目现有的构建系统
+
+-   使用项目现有的测试框架
+
+-   使用项目已有的格式化和静态检查配置
+
+-   没有充分理由时，不要引入新的工具
+
+
+## 质量门禁
+
+### 完成标准
+
+-    测试已经编写并全部通过
+
+-    代码符合项目约定
+
+-    没有静态检查或格式化警告
+
+-    提交信息清晰明确
+
+-    实现结果与计划一致
+
+-    不存在没有关联任务编号的 TODO
+
+
+### 测试指南
+
+-   测试外部行为，而不是内部实现细节
+
+-   在条件允许时，每个测试只包含一个断言
+
+-   使用清晰的测试名称描述具体场景
+
+-   使用项目现有的测试工具和辅助函数
+
+-   测试结果必须是确定且可重复的
+
+
+## 重要提醒
+
+**绝对不要**：
+
+-   使用 `--no-verify` 绕过 Git 提交钩子
+
+-   通过禁用测试来代替修复问题
+
+-   提交代码
+
+-   凭空做出假设，应通过现有代码进行验证
+
+
+**始终坚持**：
+
+-   以增量方式提交可正常运行的代码
+
+-   在开发过程中持续更新计划文档
+
+-   从已有实现中学习
+
+-   同一个问题连续失败 3 次后停止尝试，并重新评估方案

@@ -1,0 +1,5 @@
+{"time":"2026-07-01T14:35:03.4724918+08:00","level":"INFO","msg":"route_review_page_available","addr":":8080","path":"/__routes.html","url":"http://localhost:8080/__routes.html"}
+{"time":"2026-07-01T14:35:03.4730145+08:00","level":"INFO","msg":"starting server","addr":":8080"}
+{"time":"2026-07-01T14:35:10.0467493+08:00","level":"INFO","msg":"received shutdown signal","signal":"interrupt"}
+{"time":"2026-07-01T14:35:10.0473393+08:00","level":"INFO","msg":"shutting down server"}
+{"time":"2026-07-01T14:35:10.0473393+08:00","level":"INFO","msg":"智能体写作发现统一代理超时报错502定位、并修复"}

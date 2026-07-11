@@ -4,6 +4,7 @@ type ChatRequest struct {
 	Question         string   `json:"question"`
 	Type             string   `json:"type,omitempty"`
 	SessionID        string   `json:"sessionID,omitempty"`
+	WorkflowID       string   `json:"workflow_id,omitempty"`
 	KnowledgeBaseIDs []string `json:"knowledge_base_ids,omitempty"`
 	FileIDs          []string `json:"file_ids,omitempty"`
 }

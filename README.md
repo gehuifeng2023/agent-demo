@@ -87,9 +87,22 @@ session:
 
 tool:
   enabled: true
-  root_dir: knowledge_attachment/default/
+  root_dir: knowledge_attachment/
   http_allowed_hosts: []
   http_timeout_seconds: 10
+
+workflow:
+  definitions:
+    - id: analyze_test_file_log
+      nodes:
+        - name: read_test_log
+          tool: file_reader
+          input: test_file/test_file.log
+          output_key: log_content
+        - name: analyze_log
+          tool: log_analyzer
+          input: '{{results.log_content}}'
+          output_key: analysis
 
 intent:
   mode: rule
@@ -113,6 +126,7 @@ intent:
 - `tool.root_dir`：`file_reader` 允许读取的安全根目录。为空时使用 `knowledge.root_dir`。
 - `tool.http_allowed_hosts`：HTTP 工具允许访问的 hostname 白名单。为空时不会注册 HTTP 工具。
 - `tool.http_timeout_seconds`：HTTP 工具单次请求超时秒数，默认 10 秒。
+- `workflow.definitions`：服务启动时加载的命名工作流列表。每个节点指定 `name`、已注册的 `tool`、`input` 模板和唯一 `output_key`；无定义时不启用任何工作流。
 
 ## 快速开始
 
@@ -173,6 +187,8 @@ llm:
 - `GEMINI_API_KEY`
 - `LLM_MODEL`
 
+`CONFIG_PATH` 用于选择配置文件，例如 `CONFIG_PATH=configs/local.yaml go run ./cmd/server`；YAML 不支持 `${VAR}` 展开，因此不要把环境变量表达式写入 `local.yaml`。
+
 ## API
 
 默认服务地址为 `http://localhost:8080`。
@@ -202,6 +218,7 @@ Content-Type: application/json
 - `type`：可选，指定 Prompt 类型；为空时使用规则分类。
 - `knowledge_base_ids`：可选，指定默认知识库 ID，例如 `default`。
 - `file_ids`：可选，指定上传文件 ID。
+- `workflow_id`：可选，指定启动时配置的工作流 ID。指定后执行该工作流，不再执行自动单工具路由。
 
 响应示例：
 
@@ -284,6 +301,44 @@ curl -X POST http://localhost:8080/api/v1/chat \
 - 仅接受绝对 `http`/`https` URL，白名单按 hostname 匹配；URL 可携带端口。
 - 重定向目标也必须通过白名单校验。响应最多读取 1 MiB，超过部分会标注截断；即使 API 返回非 2xx 状态，也会将状态码和响应体作为工具结果返回。
 - `headers` 可能包含敏感认证信息，请只在可信的模型、日志和部署环境中使用。
+
+### 工作流调用
+
+工作流由服务端 YAML 配置定义，并在启动时校验节点名称、输出键、工具名称和模板引用。首版只支持顺序工具节点；一个节点失败会停止整个工作流。
+
+`input` 支持以下模板：
+
+- `{{question}}`：聊天请求的原始问题。
+- `{{results.<output_key>}}`：前序节点的输出。只能引用已经执行完成的节点。
+
+调用时在聊天请求中提供 `workflow_id`：
+
+```bash
+curl -X POST http://localhost:8080/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question":"分析测试日志","workflow_id":"analyze_test_file_log"}'
+```
+
+默认本地配置的该工作流会读取 `knowledge_attachment/test_file/test_file.log`，再将读取内容交给 `log_analyzer`。
+
+例如可将 `http_get` 的输出传给日志分析节点：
+
+```yaml
+workflow:
+  definitions:
+    - id: inspect_service
+      nodes:
+        - name: fetch_status
+          tool: http_get
+          input: '{"url":"https://api.example.com/status"}'
+          output_key: status
+        - name: analyze_status
+          tool: log_analyzer
+          input: '{{results.status}}'
+          output_key: analysis
+```
+
+其中 `http_get` 仍要求目标主机位于 `tool.http_allowed_hosts` 白名单中。
 
 ### 上传文件扩充知识库
 

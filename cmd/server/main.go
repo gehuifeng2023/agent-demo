@@ -15,6 +15,7 @@ import (
 	"agent-demo/internal/llm"
 	"agent-demo/internal/retriever"
 	"agent-demo/internal/tool"
+	"agent-demo/internal/workflow"
 )
 
 func main() {
@@ -33,12 +34,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("load default knowledge: %v", err)
 	}
+	toolRegistry := newToolRegistry(cfg)
+	workflowRegistry, err := newWorkflowRegistry(cfg, toolRegistry)
+	if err != nil {
+		log.Fatalf("create workflow registry: %v", err)
+	}
 	agentCore := agent.NewAgentWithOptions(llmClient, unifiedRetriever, agent.Options{
 		TopK:               cfg.RAG.TopK,
 		SessionMaxMessages: cfg.Session.MaxMessages,
 		MaxHistoryMessage:  cfg.Session.RecentLimit,
-		ToolRegistry:       newToolRegistry(cfg),
+		ToolRegistry:       toolRegistry,
 		ToolsEnabled:       cfg.ToolEnabled(),
+		WorkflowRegistry:   workflowRegistry,
 	})
 
 	chatHandler := handler.NewChatHandler(agentCore)
@@ -94,6 +101,36 @@ func newToolRegistry(cfg *config.Config) *tool.Registry {
 		registry.Register(tool.HTTPPostTool{Client: httpClient})
 	}
 	return registry
+}
+
+func newWorkflowRegistry(cfg *config.Config, tools *tool.Registry) (*workflow.Registry, error) {
+	registry := workflow.NewRegistry()
+	if cfg == nil || len(cfg.Workflow.Definitions) == 0 {
+		return registry, nil
+	}
+	if tools == nil {
+		return nil, fmt.Errorf("workflow definitions require tools to be enabled")
+	}
+
+	for _, definition := range cfg.Workflow.Definitions {
+		nodes := make([]workflow.Node, 0, len(definition.Nodes))
+		for _, nodeConfig := range definition.Nodes {
+			selectedTool, ok := tools.Get(nodeConfig.Tool)
+			if !ok {
+				return nil, fmt.Errorf("workflow %q node %q: tool not found: %s", definition.ID, nodeConfig.Name, nodeConfig.Tool)
+			}
+			nodes = append(nodes, workflow.ToolNode{
+				NameValue:      nodeConfig.Name,
+				Tool:           selectedTool,
+				InputTemplate:  nodeConfig.Input,
+				OutputKeyValue: nodeConfig.OutputKey,
+			})
+		}
+		if err := registry.Register(&workflow.Workflow{ID: definition.ID, Nodes: nodes}); err != nil {
+			return nil, err
+		}
+	}
+	return registry, nil
 }
 
 func newLLMClientFromConfig(cfg *config.Config) (llm.Client, string, error) {

@@ -19,6 +19,7 @@ import (
 	"agent-demo/internal/retriever"
 	"agent-demo/internal/session"
 	"agent-demo/internal/tool"
+	"agent-demo/internal/workflow"
 )
 
 func TestChatReturnsSourcesForRAGQuestion(t *testing.T) {
@@ -211,6 +212,46 @@ func TestChatInjectsHTTPToolContext(t *testing.T) {
 	}
 }
 
+func TestChatInjectsExplicitWorkflowContextWithoutAutomaticToolRouting(t *testing.T) {
+	workflowRegistry := workflow.NewRegistry()
+	if err := workflowRegistry.Register(&workflow.Workflow{ID: "manual", Nodes: []workflow.Node{
+		workflow.ToolNode{NameValue: "step", Tool: workflowTestTool{output: "workflow result"}, InputTemplate: "{{question}}", OutputKeyValue: "result"},
+	}}); err != nil {
+		t.Fatalf("register workflow: %v", err)
+	}
+	tools := tool.NewRegistry()
+	tools.Register(failingTool{})
+	agent := NewAgentWithOptions(llm.NewMockClient(), retriever.NewUnifiedRetriever(), Options{
+		ToolRegistry:     tools,
+		ToolsEnabled:     true,
+		WorkflowRegistry: workflowRegistry,
+	})
+
+	answer, _, _, _, err := agent.Chat(context.Background(), model.ChatRequest{
+		Question:   "请读取 faq.md",
+		WorkflowID: "manual",
+	})
+	if err != nil {
+		t.Fatalf("chat failed: %v", err)
+	}
+	if !strings.Contains(answer, "工作流：manual") || !strings.Contains(answer, "workflow result") {
+		t.Fatalf("expected workflow context in answer, got %q", answer)
+	}
+}
+
+func TestChatReturnsUnknownWorkflowError(t *testing.T) {
+	agent := NewAgentWithOptions(llm.NewMockClient(), retriever.NewUnifiedRetriever(), Options{
+		WorkflowRegistry: workflow.NewRegistry(),
+	})
+	_, _, _, _, err := agent.Chat(context.Background(), model.ChatRequest{
+		Question:   "test",
+		WorkflowID: "missing",
+	})
+	if err == nil || !strings.Contains(err.Error(), "workflow not found: missing") {
+		t.Fatalf("unexpected error %v", err)
+	}
+}
+
 func TestChatDoesNotTriggerToolForNormalQuestion(t *testing.T) {
 	registry := tool.NewRegistry()
 	registry.Register(failingTool{})
@@ -282,4 +323,14 @@ func (failingTool) Description() string { return "failing tool" }
 
 func (failingTool) Execute(context.Context, string) (string, error) {
 	return "", os.ErrInvalid
+}
+
+type workflowTestTool struct {
+	output string
+}
+
+func (t workflowTestTool) Name() string        { return "workflow_test" }
+func (t workflowTestTool) Description() string { return "workflow test tool" }
+func (t workflowTestTool) Execute(context.Context, string) (string, error) {
+	return t.output, nil
 }

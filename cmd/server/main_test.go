@@ -168,3 +168,30 @@ func TestNewToolRegistry(t *testing.T) {
 		t.Fatal("expected nil registry when tool is disabled")
 	}
 }
+
+func TestNewWorkflowRegistry(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.ApplyDefaults()
+	cfg.Workflow.Definitions = []config.WorkflowDefinitionConfig{{
+		ID: "analyze",
+		Nodes: []config.WorkflowNodeConfig{{
+			Name:      "log",
+			Tool:      "log_analyzer",
+			Input:     "{{question}}",
+			OutputKey: "analysis",
+		}},
+	}}
+
+	registry, err := newWorkflowRegistry(cfg, newToolRegistry(cfg))
+	if err != nil {
+		t.Fatalf("new workflow registry: %v", err)
+	}
+	if _, ok := registry.Get("analyze"); !ok {
+		t.Fatal("expected configured workflow")
+	}
+
+	cfg.Workflow.Definitions[0].Nodes[0].Tool = "missing"
+	if _, err := newWorkflowRegistry(cfg, newToolRegistry(cfg)); err == nil || !strings.Contains(err.Error(), "tool not found") {
+		t.Fatalf("expected missing tool error, got %v", err)
+	}
+}

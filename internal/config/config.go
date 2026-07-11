@@ -30,6 +30,7 @@ type Config struct {
 	Knowledge KnowledgeConfig `yaml:"knowledge"`
 	Session   SessionConfig   `yaml:"session"`
 	Tool      ToolConfig      `yaml:"tool"`
+	Workflow  WorkflowConfig  `yaml:"workflow"`
 }
 
 type ServerConfig struct {
@@ -62,6 +63,19 @@ type ToolConfig struct {
 	RootDir            string   `yaml:"root_dir"`
 	HTTPAllowedHosts   []string `yaml:"http_allowed_hosts"`
 	HTTPTimeoutSeconds int      `yaml:"http_timeout_seconds"`
+}
+type WorkflowConfig struct {
+	Definitions []WorkflowDefinitionConfig `yaml:"definitions"`
+}
+type WorkflowDefinitionConfig struct {
+	ID    string               `yaml:"id"`
+	Nodes []WorkflowNodeConfig `yaml:"nodes"`
+}
+type WorkflowNodeConfig struct {
+	Name      string `yaml:"name"`
+	Tool      string `yaml:"tool"`
+	Input     string `yaml:"input"`
+	OutputKey string `yaml:"output_key"`
 }
 
 func Load(path string) (*Config, error) {

@@ -16,6 +16,7 @@ import (
 	"agent-demo/internal/retriever"
 	"agent-demo/internal/session"
 	"agent-demo/internal/tool"
+	"agent-demo/internal/workflow"
 )
 
 type Agent struct {
@@ -28,6 +29,7 @@ type Agent struct {
 	topK              int
 	toolRegistry      *tool.Registry
 	toolsEnabled      bool
+	workflowRegistry  *workflow.Registry
 }
 
 type Options struct {
@@ -36,6 +38,7 @@ type Options struct {
 	MaxHistoryMessage  int
 	ToolRegistry       *tool.Registry
 	ToolsEnabled       bool
+	WorkflowRegistry   *workflow.Registry
 }
 
 func NewAgent(llmClient llm.Client, unifiedRetriever *retriever.UnifiedRetriever) *Agent {
@@ -66,6 +69,7 @@ func NewAgentWithOptions(llmClient llm.Client, unifiedRetriever *retriever.Unifi
 		topK:              options.TopK,
 		toolRegistry:      options.ToolRegistry,
 		toolsEnabled:      options.ToolsEnabled,
+		workflowRegistry:  options.WorkflowRegistry,
 	}
 }
 
@@ -94,7 +98,7 @@ func (a *Agent) Chat(ctx context.Context, req model.ChatRequest) (string, string
 	}
 
 	chunks := a.retriever.Retrieve(question, compactStrings(req.KnowledgeBaseIDs), compactStrings(req.FileIDs), a.topK)
-	toolContext, err := a.executeToolIfNeeded(ctx, question)
+	toolContext, err := a.executeWorkflowOrTool(ctx, sessionID, question, req.WorkflowID)
 	if err != nil {
 		return "", "", sessionID, buildSources(chunks), err
 	}
@@ -186,6 +190,31 @@ func (a *Agent) executeToolIfNeeded(ctx context.Context, question string) (strin
 	}
 
 	return fmt.Sprintf("工具：%s\n输入：%s\n输出：\n%s", selectedTool.Name(), input, strings.TrimSpace(output)), nil
+}
+
+func (a *Agent) executeWorkflowOrTool(ctx context.Context, sessionID, question, workflowID string) (string, error) {
+	workflowID = strings.TrimSpace(workflowID)
+	if workflowID == "" {
+		return a.executeToolIfNeeded(ctx, question)
+	}
+	if a.workflowRegistry == nil {
+		return "", fmt.Errorf("workflow not configured: %s", workflowID)
+	}
+	wf, ok := a.workflowRegistry.Get(workflowID)
+	if !ok {
+		return "", fmt.Errorf("workflow not found: %s", workflowID)
+	}
+	wfCtx := workflow.NewContext(sessionID, question)
+	if err := (workflow.Executor{}).Run(ctx, wf, wfCtx); err != nil {
+		return "", fmt.Errorf("execute workflow %s: %w", workflowID, err)
+	}
+
+	var builder strings.Builder
+	fmt.Fprintf(&builder, "工作流：%s", wf.ID)
+	for _, node := range wf.Nodes {
+		fmt.Fprintf(&builder, "\n节点：%s\n输出：\n%s", node.Name(), strings.TrimSpace(wfCtx.Results[node.OutputKey()]))
+	}
+	return builder.String(), nil
 }
 
 func withToolContext(question string, toolContext string) string {

@@ -87,6 +87,7 @@ func newToolRegistry(cfg *config.Config) *tool.Registry {
 
 	registry := tool.NewRegistry()
 	registry.Register(tool.FileReaderTool{RootDir: cfg.ToolRootDir()})
+	registry.Register(tool.LogAnalyzerTool{})
 	return registry
 }
 

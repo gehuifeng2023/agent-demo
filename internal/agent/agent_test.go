@@ -148,6 +148,38 @@ func TestChatInjectsToolContext(t *testing.T) {
 	}
 }
 
+func TestChatInjectsLogAnalyzerToolContext(t *testing.T) {
+	registry := tool.NewRegistry()
+	registry.Register(tool.LogAnalyzerTool{})
+	agent := NewAgentWithOptions(llm.NewMockClient(), retriever.NewUnifiedRetriever(), Options{
+		ToolRegistry: registry,
+		ToolsEnabled: true,
+	})
+
+	answer, answerType, _, sources, err := agent.Chat(context.Background(), model.ChatRequest{
+		Question: "帮我分析日志 request_id=abc trace_id=t1 status=502 upstream timeout",
+	})
+	if err != nil {
+		t.Fatalf("chat failed: %v", err)
+	}
+	if answerType != string(prompt.TypeLogAnalysis) {
+		t.Fatalf("expected log_analysis type, got %q", answerType)
+	}
+	for _, want := range []string{
+		"工具：log_analyzer",
+		`"error_type": "gateway_502"`,
+		`"request_id": "abc"`,
+		"网关或上游服务异常",
+	} {
+		if !strings.Contains(answer, want) {
+			t.Fatalf("expected answer to contain %q, got %q", want, answer)
+		}
+	}
+	if len(sources) != 0 {
+		t.Fatalf("expected no RAG sources, got %d", len(sources))
+	}
+}
+
 func TestChatDoesNotTriggerToolForNormalQuestion(t *testing.T) {
 	registry := tool.NewRegistry()
 	registry.Register(failingTool{})

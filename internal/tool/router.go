@@ -17,7 +17,21 @@ func RouteTool(question string) string {
 		strings.Contains(s, ".txt") {
 		return "file_reader"
 	}
+	if looksLikeLogAnalysisQuestion(s) {
+		return "log_analyzer"
+	}
 	return ""
+}
+
+func ExtractToolInput(toolName string, question string) string {
+	switch toolName {
+	case "file_reader":
+		return ExtractFilePath(question)
+	case "log_analyzer":
+		return strings.TrimSpace(question)
+	default:
+		return strings.TrimSpace(question)
+	}
 }
 
 func ExtractFilePath(question string) string {
@@ -79,4 +93,37 @@ func isPathChar(b byte) bool {
 		(b >= '0' && b <= '9') ||
 		(b >= 'A' && b <= 'Z') ||
 		(b >= 'a' && b <= 'z')
+}
+
+func looksLikeLogAnalysisQuestion(text string) bool {
+	keywords := []string{
+		"分析日志",
+		"日志分析",
+		"排查日志",
+		"error",
+		"warn",
+		"panic",
+		"exception",
+		"timeout",
+		"failed",
+		"502",
+		"500",
+		"401",
+		"403",
+		"405",
+		"request_id",
+		"trace_id",
+		"apisix",
+		"nginx",
+		"kubernetes",
+		"connection refused",
+		"connection reset",
+	}
+
+	for _, keyword := range keywords {
+		if strings.Contains(text, keyword) {
+			return true
+		}
+	}
+	return false
 }

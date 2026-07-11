@@ -138,6 +138,18 @@ func TestNewToolRegistry(t *testing.T) {
 		t.Fatalf("unexpected content %q", got)
 	}
 
+	logAnalyzer, ok := registry.Get("log_analyzer")
+	if !ok {
+		t.Fatal("expected log_analyzer")
+	}
+	logResult, err := logAnalyzer.Execute(context.Background(), "request_id=abc status=502")
+	if err != nil {
+		t.Fatalf("execute log_analyzer: %v", err)
+	}
+	if !strings.Contains(logResult, `"error_type": "gateway_502"`) {
+		t.Fatalf("unexpected log analysis result %q", logResult)
+	}
+
 	disabled := false
 	cfg.Tool.Enabled = &disabled
 	if registry := newToolRegistry(cfg); registry != nil {

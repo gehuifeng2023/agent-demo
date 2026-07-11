@@ -6,3 +6,6 @@
 /.codex/
 /.vscode/
 
+/tmp-debug-config.yaml
+/*.exe
+/cmd/server/*.exe

@@ -175,9 +175,9 @@ func (a *Agent) executeToolIfNeeded(ctx context.Context, question string) (strin
 		return "", fmt.Errorf("tool not found: %s", toolName)
 	}
 
-	input := tool.ExtractFilePath(question)
+	input := tool.ExtractToolInput(toolName, question)
 	if input == "" {
-		return "", fmt.Errorf("execute tool %s: file path is empty", toolName)
+		return "", fmt.Errorf("execute tool %s: input is empty", toolName)
 	}
 
 	output, err := selectedTool.Execute(ctx, input)
@@ -199,7 +199,7 @@ func withToolContext(question string, toolContext string) string {
 【工具上下文】
 %s
 
-请优先依据工具上下文中的真实文件内容回答。`, question, toolContext)
+请优先依据工具上下文回答。`, question, toolContext)
 }
 
 func buildSources(chunks []document.Chunk) []model.Source {

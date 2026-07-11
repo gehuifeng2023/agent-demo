@@ -2,18 +2,28 @@ package handler
 
 import (
 	"agent-demo/internal/agent"
+	"agent-demo/internal/eval"
 	"agent-demo/internal/model"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 type StreamHandler struct {
-	agent *agent.Agent
+	agent     *agent.Agent
+	evaluator eval.Evaluator
 }
 
 func NewStreamHandler(agent *agent.Agent) *StreamHandler {
-	return &StreamHandler{agent: agent}
+	return NewStreamHandlerWithEvaluator(agent, nil)
+}
+
+func NewStreamHandlerWithEvaluator(agent *agent.Agent, evaluator eval.Evaluator) *StreamHandler {
+	if evaluator == nil {
+		evaluator = eval.SimpleEvaluator{}
+	}
+	return &StreamHandler{agent: agent, evaluator: evaluator}
 }
 
 func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +67,7 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	flusher.Flush()
 
 	failed := false
+	var answer strings.Builder
 	chunks, errs := result.Chunks, result.Errors
 	for chunks != nil || errs != nil {
 		select {
@@ -72,6 +83,7 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				flusher.Flush()
 				continue
 			}
+			answer.WriteString(s)
 			fmt.Fprintf(w, "data: %s\n\n", payload)
 			flusher.Flush()
 		case err, ok := <-errs:
@@ -86,6 +98,14 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !failed {
+		qualityPayload, err := json.Marshal(h.evaluator.Evaluate(answer.String(), result.Sources))
+		if err != nil {
+			fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+			flusher.Flush()
+			return
+		}
+		fmt.Fprintf(w, "event: quality\ndata: %s\n\n", qualityPayload)
+		flusher.Flush()
 		fmt.Fprint(w, "data: [DONE]\n\n")
 		flusher.Flush()
 	}

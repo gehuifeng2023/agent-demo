@@ -2,7 +2,9 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -13,10 +15,19 @@ import (
 	"testing"
 
 	"agent-demo/internal/agent"
+	"agent-demo/internal/document"
 	"agent-demo/internal/llm"
 	"agent-demo/internal/model"
 	"agent-demo/internal/retriever"
 )
+
+type failingIndexedFileStore struct{}
+
+func (failingIndexedFileStore) StoreFileChunks(string, []document.Chunk) {}
+
+func (failingIndexedFileStore) IndexFileChunks(context.Context, string, []document.Chunk) error {
+	return errors.New("embedding unavailable")
+}
 
 func TestFileHandlerUploadAddsFileToChatRetrieval(t *testing.T) {
 	restore := chdirRepoRoot(t)
@@ -162,6 +173,36 @@ func TestFileHandlerUploadDocUsesWordConverterAndCleansFailedFile(t *testing.T) 
 	}
 	if len(savedFiles) != 0 {
 		t.Fatalf("expected failed conversion file to be removed, got %v", savedFiles)
+	}
+}
+
+func TestFileHandlerUploadCleansFileWhenEmbeddingFails(t *testing.T) {
+	uploadDir := t.TempDir()
+	handler := NewFileHandler(uploadDir, 20<<20, failingIndexedFileStore{})
+	body, contentType := multipartBody(t, "file", "notes.txt", "content to embed")
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/files/upload", body)
+	req.Header.Set("Content-Type", contentType)
+	rr := httptest.NewRecorder()
+
+	handler.Upload(rr, req)
+
+	if rr.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	var savedFiles []string
+	if err := filepath.WalkDir(uploadDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			savedFiles = append(savedFiles, path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk upload dir: %v", err)
+	}
+	if len(savedFiles) != 0 {
+		t.Fatalf("expected failed embedding file to be removed, got %v", savedFiles)
 	}
 }
 

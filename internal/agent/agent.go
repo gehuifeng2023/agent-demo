@@ -105,7 +105,10 @@ func (a *Agent) Stream(ctx context.Context, req model.ChatRequest) (StreamResult
 		return StreamResult{SessionID: sessionID}, fmt.Errorf("resolve intent: %w", err)
 	}
 
-	chunks := a.retriever.Retrieve(question, compactStrings(req.KnowledgeBaseIDs), compactStrings(req.FileIDs), a.topK)
+	chunks, err := a.retriever.RetrieveWithContext(ctx, question, compactStrings(req.KnowledgeBaseIDs), compactStrings(req.FileIDs), a.topK)
+	if err != nil {
+		return StreamResult{SessionID: sessionID, Type: string(intentType)}, fmt.Errorf("retrieve knowledge: %w", err)
+	}
 	toolContext, err := a.executeWorkflowOrTool(ctx, sessionID, question, req.WorkflowID)
 	if err != nil {
 		return StreamResult{SessionID: sessionID, Sources: buildSources(chunks)}, err
@@ -206,7 +209,10 @@ func (a *Agent) Chat(ctx context.Context, req model.ChatRequest) (string, string
 		return "", "", sessionID, nil, fmt.Errorf("resolve intent: %w", err)
 	}
 
-	chunks := a.retriever.Retrieve(question, compactStrings(req.KnowledgeBaseIDs), compactStrings(req.FileIDs), a.topK)
+	chunks, err := a.retriever.RetrieveWithContext(ctx, question, compactStrings(req.KnowledgeBaseIDs), compactStrings(req.FileIDs), a.topK)
+	if err != nil {
+		return "", "", sessionID, nil, fmt.Errorf("retrieve knowledge: %w", err)
+	}
 	toolContext, err := a.executeWorkflowOrTool(ctx, sessionID, question, req.WorkflowID)
 	if err != nil {
 		return "", "", sessionID, buildSources(chunks), err

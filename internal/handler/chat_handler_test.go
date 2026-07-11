@@ -44,6 +44,12 @@ func TestChatHandlerReturnsSources(t *testing.T) {
 	if resp.Sources[0].File != "knowledge_attachment/default/faq.md" {
 		t.Fatalf("expected knowledge_attachment/default/faq.md, got %q", resp.Sources[0].File)
 	}
+	if !resp.Quality.HasSources {
+		t.Fatalf("expected quality to report sources, got %#v", resp.Quality)
+	}
+	if resp.Quality.Score <= 0 {
+		t.Fatalf("expected positive quality score, got %#v", resp.Quality)
+	}
 }
 
 func TestChatHandlerUsesSelectedKnowledgeBase(t *testing.T) {

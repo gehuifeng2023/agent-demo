@@ -28,6 +28,7 @@ agent-demo/
 ├── internal/config/            # 配置结构、默认值和加载逻辑
 ├── internal/converter/         # 上传文件转换器
 ├── internal/document/          # 文档加载和 chunk 切分
+├── internal/embedding/         # Mock/OpenAI-compatible Embedding client
 ├── internal/handler/           # HTTP handler
 ├── internal/knowledge/         # 默认知识库注册表
 ├── internal/llm/               # Mock/OpenAI/Gemini/DeepSeek LLM client
@@ -65,6 +66,13 @@ server:
 
 llm:
   mode: mock
+  api_key: ""
+  model: ""
+  base_url: ""
+  timeout_seconds: 60
+
+embedding:
+  mode: disabled
   api_key: ""
   model: ""
   base_url: ""
@@ -116,6 +124,11 @@ intent:
 - `llm.model`：LLM 模型名。为空时会 fallback 到 `LLM_MODEL` 或 client 默认模型。
 - `llm.base_url`：LLM base URL。为空时使用 client 默认地址。
 - `llm.timeout_seconds`：LLM 请求超时时间。
+- `embedding.mode`：`disabled` 或 `openai_compatible`。启用后 Chat 和 Knowledge Recall 使用向量检索。
+- `embedding.api_key`：Embedding API key。为空时依次读取 `EMBEDDING_API_KEY`、`OPENAI_API_KEY`。
+- `embedding.model`：Embedding 模型名；`openai_compatible` 模式下必填。
+- `embedding.base_url`：兼容 OpenAI 的 API 根地址，例如 `https://api.openai.com/v1`；客户端会请求其 `/embeddings` 路径。
+- `embedding.timeout_seconds`：Embedding 请求超时秒数，默认 60。
 
 DeepSeek 配置示例：
 
@@ -132,6 +145,23 @@ llm:
 
 ```bash
 DEEPSEEK_API_KEY=your-key go run ./cmd/server
+```
+
+OpenAI-compatible Embedding 配置示例：
+
+```yaml
+embedding:
+  mode: openai_compatible
+  api_key: ""
+  model: text-embedding-3-small
+  base_url: https://api.openai.com/v1
+  timeout_seconds: 60
+```
+
+也可以通过环境变量提供 key：
+
+```bash
+EMBEDDING_API_KEY=your-embedding-key go run ./cmd/server
 ```
 - `knowledge.root_dir`：启动时加载的默认知识库目录。
 - `upload.dir`：上传文件保存根目录。
@@ -244,6 +274,11 @@ Content-Type: application/json
   "sessionID": "s1",
   "answer": "这是 Mock LLM 返回的回答...",
   "type": "chat",
+  "quality": {
+    "score": 0.8,
+    "has_sources": true,
+    "warnings": []
+  },
   "sources": [
     {
       "file": "knowledge_attachment/default/faq.md",
@@ -263,7 +298,7 @@ Content-Type: application/json
 Accept: text/event-stream
 ```
 
-接口返回 SSE：首先发送 `event: meta` 会话元数据，随后发送多个 `data` 文本增量，成功结束时发送 `data: [DONE]`；模型调用失败时发送 `event: error`。
+接口返回 SSE：首先发送 `event: meta` 会话元数据，随后发送多个 `data` 文本增量；成功结束时发送包含 `score`、`has_sources` 和 `warnings` 的 `event: quality`，最后发送 `data: [DONE]`。模型调用失败时发送 `event: error`。
 
 ### 工具调用
 

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,6 +11,21 @@ import (
 	"agent-demo/internal/agent"
 	"agent-demo/internal/llm"
 )
+
+type failingStreamClient struct{}
+
+func (failingStreamClient) Generate(context.Context, string) (string, error) {
+	return "", errors.New("not used")
+}
+
+func (failingStreamClient) Stream(context.Context, string) (<-chan string, <-chan error) {
+	chunks := make(chan string)
+	close(chunks)
+	errs := make(chan error, 1)
+	errs <- errors.New("model stream failed")
+	close(errs)
+	return chunks, errs
+}
 
 func TestStreamHandlerReturnsSSEEvents(t *testing.T) {
 	restore := chdirRepoRoot(t)
@@ -36,6 +53,14 @@ func TestStreamHandlerReturnsSSEEvents(t *testing.T) {
 	if !strings.Contains(body, "data: [DONE]\n\n") {
 		t.Fatalf("expected done event, got %q", body)
 	}
+	qualityIndex := strings.Index(body, "event: quality\n")
+	doneIndex := strings.Index(body, "data: [DONE]\n\n")
+	if qualityIndex == -1 || qualityIndex > doneIndex {
+		t.Fatalf("expected quality event before done, got %q", body)
+	}
+	if !strings.Contains(body, `"has_sources":true`) {
+		t.Fatalf("expected quality source status, got %q", body)
+	}
 }
 
 func TestStreamHandlerRejectsInvalidJSON(t *testing.T) {
@@ -47,5 +72,21 @@ func TestStreamHandlerRejectsInvalidJSON(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+}
+
+func TestStreamHandlerDoesNotEmitQualityForFailedStream(t *testing.T) {
+	handler := NewStreamHandler(agent.NewAgent(failingStreamClient{}, nil))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/chat/stream", strings.NewReader(`{"question":"test"}`))
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "event: error\n") {
+		t.Fatalf("expected error event, got %q", body)
+	}
+	if strings.Contains(body, "event: quality\n") || strings.Contains(body, "data: [DONE]\n\n") {
+		t.Fatalf("did not expect quality or done after stream error, got %q", body)
 	}
 }

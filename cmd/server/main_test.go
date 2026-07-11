@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"agent-demo/internal/config"
+	"agent-demo/internal/embedding"
 	"agent-demo/internal/llm"
 )
 
@@ -96,6 +97,48 @@ func TestNewLLMClientFromConfig(t *testing.T) {
 	})
 }
 
+func TestNewEmbeddingClientFromConfig(t *testing.T) {
+	t.Setenv("EMBEDDING_API_KEY", "embedding-key")
+
+	t.Run("disabled", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.ApplyDefaults()
+
+		client, err := newEmbeddingClientFromConfig(cfg)
+		if err != nil {
+			t.Fatalf("newEmbeddingClientFromConfig failed: %v", err)
+		}
+		if client != nil {
+			t.Fatalf("expected nil client, got %T", client)
+		}
+	})
+
+	t.Run("openai compatible", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.ApplyDefaults()
+		cfg.Embedding.Mode = "openai_compatible"
+		cfg.Embedding.Model = "test-embedding-model"
+
+		client, err := newEmbeddingClientFromConfig(cfg)
+		if err != nil {
+			t.Fatalf("newEmbeddingClientFromConfig failed: %v", err)
+		}
+		if _, ok := client.(*embedding.OpenAICompatibleClient); !ok {
+			t.Fatalf("expected *embedding.OpenAICompatibleClient, got %T", client)
+		}
+	})
+
+	t.Run("requires model", func(t *testing.T) {
+		cfg := &config.Config{}
+		cfg.ApplyDefaults()
+		cfg.Embedding.Mode = "openai_compatible"
+
+		if _, err := newEmbeddingClientFromConfig(cfg); err == nil {
+			t.Fatal("expected model error")
+		}
+	})
+}
+
 func TestLoadConfigUsesConfigPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "local.yaml")
 	if err := os.WriteFile(path, []byte("server:\n  addr: \":9090\"\n"), 0644); err != nil {
@@ -115,7 +158,7 @@ func TestLoadConfigUsesConfigPath(t *testing.T) {
 func TestNewRetrieverFromDefaultKnowledge(t *testing.T) {
 	dir := filepath.Join("..", "..", "knowledge_attachment", "default")
 
-	unifiedRetriever, err := newRetrieverFromDefaultKnowledge(dir)
+	unifiedRetriever, err := newRetrieverFromDefaultKnowledge(dir, nil)
 	if err != nil {
 		t.Fatalf("newRetrieverFromDefaultKnowledge failed: %v", err)
 	}

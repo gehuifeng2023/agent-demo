@@ -5,16 +5,26 @@ import (
 	"net/http"
 
 	"agent-demo/internal/agent"
+	"agent-demo/internal/eval"
 	"agent-demo/internal/model"
 )
 
 type ChatHandler struct {
-	agent *agent.Agent
+	agent     *agent.Agent
+	evaluator eval.Evaluator
 }
 
 func NewChatHandler(agent *agent.Agent) *ChatHandler {
+	return NewChatHandlerWithEvaluator(agent, nil)
+}
+
+func NewChatHandlerWithEvaluator(agent *agent.Agent, evaluator eval.Evaluator) *ChatHandler {
+	if evaluator == nil {
+		evaluator = eval.SimpleEvaluator{}
+	}
 	return &ChatHandler{
-		agent: agent,
+		agent:     agent,
+		evaluator: evaluator,
 	}
 }
 
@@ -47,6 +57,7 @@ func (h *ChatHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Answer:    answer,
 		Type:      answerType,
 		Sources:   sources,
+		Quality:   h.evaluator.Evaluate(answer, sources),
 	}
 
 	writeJSON(w, http.StatusOK, resp)

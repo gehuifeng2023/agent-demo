@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"agent-demo/internal/agent"
 	"agent-demo/internal/config"
 	"agent-demo/internal/document"
+	"agent-demo/internal/embedding"
 	"agent-demo/internal/handler"
 	"agent-demo/internal/knowledge"
 	"agent-demo/internal/llm"
@@ -30,7 +32,12 @@ func main() {
 	}
 	log.Printf("LLM mode: %s", mode)
 
-	unifiedRetriever, err := newRetrieverFromDefaultKnowledge(cfg.Knowledge.RootDir)
+	embeddingClient, err := newEmbeddingClientFromConfig(cfg)
+	if err != nil {
+		log.Fatalf("create embedding client: %v", err)
+	}
+
+	unifiedRetriever, err := newRetrieverFromDefaultKnowledge(cfg.Knowledge.RootDir, embeddingClient)
 	if err != nil {
 		log.Fatalf("load default knowledge: %v", err)
 	}
@@ -74,17 +81,20 @@ func loadConfig() (*config.Config, error) {
 	return config.Load(path)
 }
 
-func newRetrieverFromDefaultKnowledge(dir string) (*retriever.UnifiedRetriever, error) {
+func newRetrieverFromDefaultKnowledge(dir string, embeddingClient embedding.Client) (*retriever.UnifiedRetriever, error) {
 	docs, err := document.LoadFromDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("load docs: %w", err)
 	}
 
-	unifiedRetriever := retriever.NewUnifiedRetriever()
+	unifiedRetriever := retriever.NewUnifiedRetrieverWithEmbedding(embeddingClient)
 	unifiedRetriever.RegisterKnowledgeBase(&knowledge.KnowledgeBase{
 		ID:     "default",
 		Chunks: document.SplitByParagraph(docs),
 	})
+	if err := unifiedRetriever.BuildVectorIndex(context.Background()); err != nil {
+		return nil, fmt.Errorf("build embedding index: %w", err)
+	}
 	return unifiedRetriever, nil
 }
 
@@ -171,6 +181,28 @@ func newLLMClientFromConfig(cfg *config.Config) (llm.Client, string, error) {
 		return client, "deepseek", nil
 	default:
 		return nil, "", fmt.Errorf("unsupported LLM_MODE: %s", mode)
+	}
+}
+
+func newEmbeddingClientFromConfig(cfg *config.Config) (embedding.Client, error) {
+	if cfg == nil {
+		cfg = &config.Config{}
+		cfg.ApplyDefaults()
+	}
+
+	switch strings.ToLower(strings.TrimSpace(cfg.Embedding.Mode)) {
+	case "", "disabled":
+		return nil, nil
+	case "openai_compatible":
+		apiKey := firstNonEmpty(cfg.Embedding.APIKey, os.Getenv("EMBEDDING_API_KEY"), os.Getenv("OPENAI_API_KEY"))
+		model := strings.TrimSpace(cfg.Embedding.Model)
+		client, err := embedding.NewOpenAICompatibleClientWithConfig(apiKey, model, cfg.Embedding.BaseURL, cfg.EmbeddingTimeout())
+		if err != nil {
+			return nil, err
+		}
+		return client, nil
+	default:
+		return nil, fmt.Errorf("unsupported embedding mode: %s", cfg.Embedding.Mode)
 	}
 }
 

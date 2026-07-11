@@ -18,6 +18,12 @@ llm:
   model: gemini-test
   base_url: http://example.com
   timeout_seconds: 15
+embedding:
+  mode: openai_compatible
+  api_key: embedding-key
+  model: embedding-test
+  base_url: http://embedding.example.com/v1
+  timeout_seconds: 21
 rag:
   top_k: 5
 upload:
@@ -62,6 +68,12 @@ workflow:
 	}
 	if cfg.LLMTimeout() != 15*time.Second {
 		t.Fatalf("expected 15s timeout, got %s", cfg.LLMTimeout())
+	}
+	if cfg.Embedding.Mode != "openai_compatible" || cfg.Embedding.APIKey != "embedding-key" || cfg.Embedding.Model != "embedding-test" {
+		t.Fatalf("unexpected embedding config: %#v", cfg.Embedding)
+	}
+	if cfg.EmbeddingTimeout() != 21*time.Second {
+		t.Fatalf("expected embedding timeout 21s, got %s", cfg.EmbeddingTimeout())
 	}
 	if cfg.RAG.TopK != 5 {
 		t.Fatalf("expected top_k 5, got %d", cfg.RAG.TopK)
@@ -109,6 +121,9 @@ func TestApplyDefaultsUsesCurrentHardCodedValues(t *testing.T) {
 	}
 	if cfg.LLMTimeout() != DefaultLLMTimeoutSeconds*time.Second {
 		t.Fatalf("expected default llm timeout, got %s", cfg.LLMTimeout())
+	}
+	if cfg.Embedding.Mode != DefaultEmbeddingMode || cfg.EmbeddingTimeout() != DefaultEmbeddingTimeoutSeconds*time.Second {
+		t.Fatalf("unexpected embedding defaults: %#v timeout=%s", cfg.Embedding, cfg.EmbeddingTimeout())
 	}
 	if cfg.RAG.TopK != DefaultRAGTopK {
 		t.Fatalf("expected default top_k %d, got %d", DefaultRAGTopK, cfg.RAG.TopK)

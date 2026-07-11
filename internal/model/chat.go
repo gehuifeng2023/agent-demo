@@ -14,4 +14,5 @@ type ChatResponse struct {
 	Answer    string   `json:"answer"`
 	Type      string   `json:"type"`
 	Sources   []Source `json:"sources,omitempty"`
+	Quality   Quality  `json:"quality"`
 }

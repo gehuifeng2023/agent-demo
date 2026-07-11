@@ -21,7 +21,6 @@ func NewKeywordRetriever(chunks []document.Chunk) *KeywordRetriever {
 		chunks: chunks,
 	}
 }
-
 func (r *KeywordRetriever) Retrieve(query string, topK int) []document.Chunk {
 	query = normalizeText(query)
 	if query == "" || topK <= 0 {

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"os"
 
@@ -12,6 +13,10 @@ import (
 
 type fileChunkStore interface {
 	StoreFileChunks(fileID string, chunks []document.Chunk)
+}
+
+type indexedFileChunkStore interface {
+	IndexFileChunks(ctx context.Context, fileID string, chunks []document.Chunk) error
 }
 
 type FileHandler struct {
@@ -71,7 +76,15 @@ func (h *FileHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if h.fileStore != nil {
-		h.fileStore.StoreFileChunks(id, chunks)
+		if indexedStore, ok := h.fileStore.(indexedFileChunkStore); ok {
+			if err := indexedStore.IndexFileChunks(r.Context(), id, chunks); err != nil {
+				_ = os.Remove(path)
+				writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+				return
+			}
+		} else {
+			h.fileStore.StoreFileChunks(id, chunks)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, model.UploadResponse{FileID: id, FileName: header.Filename, Size: header.Size})

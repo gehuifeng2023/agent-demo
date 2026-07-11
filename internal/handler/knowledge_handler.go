@@ -62,12 +62,17 @@ func (h *KnowledgeHandler) Recall(w http.ResponseWriter, r *http.Request) {
 		topK = h.defaultTopK
 	}
 
-	chunks := h.retriever.RetrieveChunks(
+	chunks, err := h.retriever.RetrieveChunksWithContext(
+		r.Context(),
 		question,
 		compactKnowledgeStrings(req.KnowledgeBaseIDs),
 		compactKnowledgeStrings(req.FileIDs),
 		topK,
 	)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
 	writeJSON(w, http.StatusOK, model.KnowledgeRecallResponse{
 		Question: question,
 		Chunks:   buildKnowledgeChunks(chunks),

@@ -8,23 +8,26 @@ import (
 )
 
 const (
-	DefaultConfigPath         = "configs/local.yaml"
-	DefaultServerAddr         = ":8080"
-	DefaultLLMMode            = "mock"
-	DefaultLLMTimeoutSeconds  = 60
-	DefaultRAGTopK            = 3
-	DefaultUploadDir          = "knowledge_attachment/days"
-	DefaultUploadMaxSizeMB    = 20
-	DefaultKnowledgeRootDir   = "knowledge_attachment/default/"
-	DefaultSessionMaxMessages = 30
-	DefaultSessionRecentLimit = 8
-	DefaultToolEnabled        = true
-	DefaultHTTPTimeoutSeconds = 10
+	DefaultConfigPath              = "configs/local.yaml"
+	DefaultServerAddr              = ":8080"
+	DefaultLLMMode                 = "mock"
+	DefaultLLMTimeoutSeconds       = 60
+	DefaultEmbeddingMode           = "disabled"
+	DefaultEmbeddingTimeoutSeconds = 60
+	DefaultRAGTopK                 = 3
+	DefaultUploadDir               = "knowledge_attachment/days"
+	DefaultUploadMaxSizeMB         = 20
+	DefaultKnowledgeRootDir        = "knowledge_attachment/default/"
+	DefaultSessionMaxMessages      = 30
+	DefaultSessionRecentLimit      = 8
+	DefaultToolEnabled             = true
+	DefaultHTTPTimeoutSeconds      = 10
 )
 
 type Config struct {
 	Server    ServerConfig    `yaml:"server"`
 	LLM       LLMConfig       `yaml:"llm"`
+	Embedding EmbeddingConfig `yaml:"embedding"`
 	RAG       RAGConfig       `yaml:"rag"`
 	Upload    UploadConfig    `yaml:"upload"`
 	Knowledge KnowledgeConfig `yaml:"knowledge"`
@@ -37,6 +40,13 @@ type ServerConfig struct {
 	Addr string `yaml:"addr"`
 }
 type LLMConfig struct {
+	Mode           string `yaml:"mode"`
+	BaseURL        string `yaml:"base_url"`
+	APIKey         string `yaml:"api_key"`
+	Model          string `yaml:"model"`
+	TimeoutSeconds int    `yaml:"timeout_seconds"`
+}
+type EmbeddingConfig struct {
 	Mode           string `yaml:"mode"`
 	BaseURL        string `yaml:"base_url"`
 	APIKey         string `yaml:"api_key"`
@@ -101,6 +111,12 @@ func (c *Config) ApplyDefaults() {
 	if c.LLM.TimeoutSeconds <= 0 {
 		c.LLM.TimeoutSeconds = DefaultLLMTimeoutSeconds
 	}
+	if c.Embedding.Mode == "" {
+		c.Embedding.Mode = DefaultEmbeddingMode
+	}
+	if c.Embedding.TimeoutSeconds <= 0 {
+		c.Embedding.TimeoutSeconds = DefaultEmbeddingTimeoutSeconds
+	}
 	if c.RAG.TopK <= 0 {
 		c.RAG.TopK = DefaultRAGTopK
 	}
@@ -130,6 +146,10 @@ func (c Config) UploadMaxBytes() int64 {
 
 func (c Config) LLMTimeout() time.Duration {
 	return time.Duration(c.LLM.TimeoutSeconds) * time.Second
+}
+
+func (c Config) EmbeddingTimeout() time.Duration {
+	return time.Duration(c.Embedding.TimeoutSeconds) * time.Second
 }
 
 func (c Config) ToolEnabled() bool {

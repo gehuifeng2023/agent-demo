@@ -2,6 +2,9 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,6 +180,34 @@ func TestChatInjectsLogAnalyzerToolContext(t *testing.T) {
 	}
 	if len(sources) != 0 {
 		t.Fatalf("expected no RAG sources, got %d", len(sources))
+	}
+}
+
+func TestChatInjectsHTTPToolContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, "HTTP tool content")
+	}))
+	defer server.Close()
+
+	request, err := http.NewRequest(http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	registry := tool.NewRegistry()
+	registry.Register(tool.HTTPGetTool{Client: tool.NewHTTPClient([]string{request.URL.Hostname()}, 0)})
+	agent := NewAgentWithOptions(llm.NewMockClient(), retriever.NewUnifiedRetriever(), Options{
+		ToolRegistry: registry,
+		ToolsEnabled: true,
+	})
+
+	answer, _, _, _, err := agent.Chat(context.Background(), model.ChatRequest{
+		Question: fmt.Sprintf(`GET {"url":%q}`, server.URL),
+	})
+	if err != nil {
+		t.Fatalf("chat failed: %v", err)
+	}
+	if !strings.Contains(answer, "工具：http_get") || !strings.Contains(answer, "HTTP tool content") {
+		t.Fatalf("expected HTTP tool context in answer, got %q", answer)
 	}
 }
 

@@ -31,6 +31,8 @@ session:
 tool:
   enabled: false
   root_dir: tool-root
+  http_allowed_hosts: [api.example.com]
+  http_timeout_seconds: 12
 `)
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -71,6 +73,12 @@ tool:
 	if cfg.ToolRootDir() != "tool-root" {
 		t.Fatalf("expected tool root, got %q", cfg.ToolRootDir())
 	}
+	if len(cfg.Tool.HTTPAllowedHosts) != 1 || cfg.Tool.HTTPAllowedHosts[0] != "api.example.com" {
+		t.Fatalf("unexpected HTTP allow hosts %#v", cfg.Tool.HTTPAllowedHosts)
+	}
+	if cfg.HTTPToolTimeout() != 12*time.Second {
+		t.Fatalf("expected HTTP timeout 12s, got %s", cfg.HTTPToolTimeout())
+	}
 }
 
 func TestApplyDefaultsUsesCurrentHardCodedValues(t *testing.T) {
@@ -104,5 +112,8 @@ func TestApplyDefaultsUsesCurrentHardCodedValues(t *testing.T) {
 	}
 	if cfg.ToolRootDir() != DefaultKnowledgeRootDir {
 		t.Fatalf("expected default tool root %q, got %q", DefaultKnowledgeRootDir, cfg.ToolRootDir())
+	}
+	if cfg.HTTPToolTimeout() != DefaultHTTPTimeoutSeconds*time.Second {
+		t.Fatalf("expected default HTTP timeout %ds, got %s", DefaultHTTPTimeoutSeconds, cfg.HTTPToolTimeout())
 	}
 }

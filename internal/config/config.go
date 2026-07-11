@@ -19,6 +19,7 @@ const (
 	DefaultSessionMaxMessages = 30
 	DefaultSessionRecentLimit = 8
 	DefaultToolEnabled        = true
+	DefaultHTTPTimeoutSeconds = 10
 )
 
 type Config struct {
@@ -57,8 +58,10 @@ type SessionConfig struct {
 	RecentLimit int `yaml:"recent_limit"`
 }
 type ToolConfig struct {
-	Enabled *bool  `yaml:"enabled"`
-	RootDir string `yaml:"root_dir"`
+	Enabled            *bool    `yaml:"enabled"`
+	RootDir            string   `yaml:"root_dir"`
+	HTTPAllowedHosts   []string `yaml:"http_allowed_hosts"`
+	HTTPTimeoutSeconds int      `yaml:"http_timeout_seconds"`
 }
 
 func Load(path string) (*Config, error) {
@@ -102,6 +105,9 @@ func (c *Config) ApplyDefaults() {
 	if c.Session.RecentLimit <= 0 {
 		c.Session.RecentLimit = DefaultSessionRecentLimit
 	}
+	if c.Tool.HTTPTimeoutSeconds <= 0 {
+		c.Tool.HTTPTimeoutSeconds = DefaultHTTPTimeoutSeconds
+	}
 }
 
 func (c Config) UploadMaxBytes() int64 {
@@ -124,4 +130,8 @@ func (c Config) ToolRootDir() string {
 		return c.Tool.RootDir
 	}
 	return c.Knowledge.RootDir
+}
+
+func (c Config) HTTPToolTimeout() time.Duration {
+	return time.Duration(c.Tool.HTTPTimeoutSeconds) * time.Second
 }

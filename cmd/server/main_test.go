@@ -150,6 +150,18 @@ func TestNewToolRegistry(t *testing.T) {
 		t.Fatalf("unexpected log analysis result %q", logResult)
 	}
 
+	if _, ok := registry.Get("http_get"); ok {
+		t.Fatal("expected HTTP tool to remain disabled without allowlisted hosts")
+	}
+	cfg.Tool.HTTPAllowedHosts = []string{"api.example.com"}
+	registry = newToolRegistry(cfg)
+	if _, ok := registry.Get("http_get"); !ok {
+		t.Fatal("expected http_get for configured allowlisted hosts")
+	}
+	if _, ok := registry.Get("http_post"); !ok {
+		t.Fatal("expected http_post for configured allowlisted hosts")
+	}
+
 	disabled := false
 	cfg.Tool.Enabled = &disabled
 	if registry := newToolRegistry(cfg); registry != nil {

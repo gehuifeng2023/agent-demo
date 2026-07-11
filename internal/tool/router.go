@@ -7,7 +7,16 @@ import (
 )
 
 func RouteTool(question string) string {
-	s := strings.ToLower(question)
+	trimmed := strings.TrimSpace(question)
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "get ") {
+		return "http_get"
+	}
+	if strings.HasPrefix(lower, "post ") {
+		return "http_post"
+	}
+
+	s := lower
 	if strings.Contains(s, "读取") ||
 		strings.Contains(s, "查看文件") ||
 		strings.Contains(s, "打开文件") ||
@@ -29,6 +38,12 @@ func ExtractToolInput(toolName string, question string) string {
 		return ExtractFilePath(question)
 	case "log_analyzer":
 		return strings.TrimSpace(question)
+	case "http_get", "http_post":
+		parts := strings.Fields(strings.TrimSpace(question))
+		if len(parts) < 2 {
+			return ""
+		}
+		return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(question), parts[0]))
 	default:
 		return strings.TrimSpace(question)
 	}

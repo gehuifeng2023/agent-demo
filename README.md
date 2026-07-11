@@ -88,6 +88,8 @@ session:
 tool:
   enabled: true
   root_dir: knowledge_attachment/default/
+  http_allowed_hosts: []
+  http_timeout_seconds: 10
 
 intent:
   mode: rule
@@ -109,6 +111,8 @@ intent:
 - `session.recent_limit`：构建 Prompt 时读取的最近消息数。
 - `tool.enabled`：是否启用工具自动调用。默认启用。
 - `tool.root_dir`：`file_reader` 允许读取的安全根目录。为空时使用 `knowledge.root_dir`。
+- `tool.http_allowed_hosts`：HTTP 工具允许访问的 hostname 白名单。为空时不会注册 HTTP 工具。
+- `tool.http_timeout_seconds`：HTTP 工具单次请求超时秒数，默认 10 秒。
 
 ## 快速开始
 
@@ -223,6 +227,8 @@ Content-Type: application/json
 
 - `file_reader`：读取 `tool.root_dir` 下的 `.md`/`.txt` 文件内容，并把结果作为工具上下文交给 LLM。
 - `log_analyzer`：分析 APISIX、Nginx、Kubernetes、Go 服务等日志，提取错误类型、request_id、trace_id、状态码、可能根因和排查建议。
+- `http_get`：向 `tool.http_allowed_hosts` 中的主机发送 HTTP GET 请求。
+- `http_post`：向 `tool.http_allowed_hosts` 中的主机发送 HTTP POST JSON 请求。
 
 请求示例：
 
@@ -246,6 +252,38 @@ curl -X POST http://localhost:8080/api/v1/chat \
   -H "Content-Type: application/json" \
   -d '{"question":"帮我分析日志 request_id=abc trace_id=t1 status=502 upstream timeout"}'
 ```
+
+HTTP API 工具使用固定命令格式。先在配置中明确允许目标主机：
+
+```yaml
+tool:
+  http_allowed_hosts:
+    - api.example.com
+  http_timeout_seconds: 10
+```
+
+GET 示例：
+
+```bash
+curl -X POST http://localhost:8080/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question":"GET {\"url\":\"https://api.example.com/v1/health\",\"headers\":{\"Authorization\":\"Bearer token\"}}"}'
+```
+
+POST 示例：
+
+```bash
+curl -X POST http://localhost:8080/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"question":"POST {\"url\":\"https://api.example.com/v1/items\",\"headers\":{\"Authorization\":\"Bearer token\"},\"body\":{\"name\":\"agent\"}}"}'
+```
+
+说明：
+
+- 命令必须以 `GET ` 或 `POST ` 开头，后面跟 JSON 参数；`url` 必填，`headers` 可选，POST 的 `body` 为可选 JSON 值。
+- 仅接受绝对 `http`/`https` URL，白名单按 hostname 匹配；URL 可携带端口。
+- 重定向目标也必须通过白名单校验。响应最多读取 1 MiB，超过部分会标注截断；即使 API 返回非 2xx 状态，也会将状态码和响应体作为工具结果返回。
+- `headers` 可能包含敏感认证信息，请只在可信的模型、日志和部署环境中使用。
 
 ### 上传文件扩充知识库
 

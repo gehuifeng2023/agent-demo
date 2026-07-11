@@ -27,6 +27,15 @@ func TestRouteToolIgnoresNormalQuestion(t *testing.T) {
 	}
 }
 
+func TestRouteToolDetectsHTTPCommandsBeforeOtherKeywords(t *testing.T) {
+	if got := RouteTool(`GET {"url":"https://api.example.com/faq.md"}`); got != "http_get" {
+		t.Fatalf("expected http_get, got %q", got)
+	}
+	if got := RouteTool(`POST {"url":"https://api.example.com/logs","body":{"message":"timeout"}}`); got != "http_post" {
+		t.Fatalf("expected http_post, got %q", got)
+	}
+}
+
 func TestExtractFilePath(t *testing.T) {
 	got := ExtractFilePath("请查看 knowledge_attachment/default/faq.md，然后总结")
 	if got != "knowledge_attachment/default/faq.md" {
@@ -45,6 +54,15 @@ func TestExtractToolInputForLogAnalyzer(t *testing.T) {
 	question := "帮我分析日志 request_id=abc status=502"
 	got := ExtractToolInput("log_analyzer", question)
 	if got != question {
+		t.Fatalf("unexpected input %q", got)
+	}
+}
+
+func TestExtractToolInputForHTTPCommand(t *testing.T) {
+	question := `POST {"url":"https://api.example.com/items","body":{"name":"agent"}}`
+	got := ExtractToolInput("http_post", question)
+	want := `{"url":"https://api.example.com/items","body":{"name":"agent"}}`
+	if got != want {
 		t.Fatalf("unexpected input %q", got)
 	}
 }

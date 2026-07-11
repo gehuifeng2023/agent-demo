@@ -88,6 +88,11 @@ func newToolRegistry(cfg *config.Config) *tool.Registry {
 	registry := tool.NewRegistry()
 	registry.Register(tool.FileReaderTool{RootDir: cfg.ToolRootDir()})
 	registry.Register(tool.LogAnalyzerTool{})
+	if len(cfg.Tool.HTTPAllowedHosts) > 0 {
+		httpClient := tool.NewHTTPClient(cfg.Tool.HTTPAllowedHosts, cfg.HTTPToolTimeout())
+		registry.Register(tool.HTTPGetTool{Client: httpClient})
+		registry.Register(tool.HTTPPostTool{Client: httpClient})
+	}
 	return registry
 }
 
